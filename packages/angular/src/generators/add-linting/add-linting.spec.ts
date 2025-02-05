@@ -1,12 +1,13 @@
-import type { ProjectConfiguration, Tree } from '@nrwl/devkit';
+import 'nx/src/internal-testing-utils/mock-project-graph';
 import {
+  ProjectConfiguration,
+  Tree,
   addProjectConfiguration,
   readJson,
-  readProjectConfiguration,
   updateJson,
-} from '@nrwl/devkit';
-import { createTreeWithEmptyV1Workspace } from '@nrwl/devkit/testing';
-import * as linter from '@nrwl/linter';
+} from '@nx/devkit';
+import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
+import * as linter from '@nx/eslint';
 import { addLintingGenerator } from './add-linting';
 
 describe('addLinting generator', () => {
@@ -15,7 +16,7 @@ describe('addLinting generator', () => {
   const appProjectRoot = `apps/${appProjectName}`;
 
   beforeEach(() => {
-    tree = createTreeWithEmptyV1Workspace();
+    tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
     addProjectConfiguration(tree, appProjectName, {
       root: appProjectRoot,
@@ -32,6 +33,7 @@ describe('addLinting generator', () => {
       prefix: 'myOrg',
       projectName: appProjectName,
       projectRoot: appProjectRoot,
+      skipFormat: true,
     });
 
     expect(linter.lintProjectGenerator).toHaveBeenCalled();
@@ -42,6 +44,7 @@ describe('addLinting generator', () => {
       prefix: 'myOrg',
       projectName: appProjectName,
       projectRoot: appProjectRoot,
+      skipFormat: true,
     });
 
     const { devDependencies } = readJson(tree, 'package.json');
@@ -52,113 +55,53 @@ describe('addLinting generator', () => {
     expect(devDependencies['@angular-eslint/template-parser']).toBeDefined();
   });
 
+  it('should use flat config and install correct dependencies when using it', async () => {
+    process.env.ESLINT_USE_FLAT_CONFIG = 'true';
+    await addLintingGenerator(tree, {
+      prefix: 'myOrg',
+      projectName: appProjectName,
+      projectRoot: appProjectRoot,
+      skipFormat: true,
+    });
+
+    const { devDependencies } = readJson(tree, 'package.json');
+    expect(devDependencies['@typescript-eslint/utils']).toMatchInlineSnapshot(
+      `"^8.19.0"`
+    );
+    delete process.env.ESLINT_USE_FLAT_CONFIG;
+  });
+
   it('should correctly generate the .eslintrc.json file', async () => {
     await addLintingGenerator(tree, {
       prefix: 'myOrg',
       projectName: appProjectName,
       projectRoot: appProjectRoot,
+      skipFormat: true,
     });
 
     const eslintConfig = readJson(tree, `${appProjectRoot}/.eslintrc.json`);
     expect(eslintConfig).toMatchSnapshot();
   });
 
-  it('should update the project with the right lint target configuration', async () => {
+  it('should not touch the package.json when run with `--skipPackageJson`', async () => {
+    let initialPackageJson;
+    updateJson(tree, 'package.json', (json) => {
+      json.dependencies = {};
+      json.devDependencies = {};
+      initialPackageJson = json;
+
+      return json;
+    });
+
     await addLintingGenerator(tree, {
       prefix: 'myOrg',
       projectName: appProjectName,
       projectRoot: appProjectRoot,
+      skipFormat: true,
+      skipPackageJson: true,
     });
 
-    const project = readProjectConfiguration(tree, appProjectName);
-    expect(project.targets.lint).toEqual({
-      executor: '@nrwl/linter:eslint',
-      options: {
-        lintFilePatterns: [
-          `${appProjectRoot}/**/*.ts`,
-          `${appProjectRoot}/**/*.html`,
-        ],
-      },
-      outputs: ['{options.outputFile}'],
-    });
-  });
-
-  describe('support angular v14', () => {
-    beforeEach(() => {
-      tree = createTreeWithEmptyV1Workspace();
-      updateJson(tree, 'package.json', (json) => ({
-        ...json,
-        dependencies: {
-          ...json.dependencies,
-          '@angular/core': '14.1.0',
-        },
-      }));
-
-      addProjectConfiguration(tree, appProjectName, {
-        root: appProjectRoot,
-        prefix: 'myOrg',
-        projectType: 'application',
-        targets: {},
-      } as ProjectConfiguration);
-    });
-
-    it('should invoke the lintProjectGenerator', async () => {
-      jest.spyOn(linter, 'lintProjectGenerator');
-
-      await addLintingGenerator(tree, {
-        prefix: 'myOrg',
-        projectName: appProjectName,
-        projectRoot: appProjectRoot,
-      });
-
-      expect(linter.lintProjectGenerator).toHaveBeenCalled();
-    });
-
-    it('should add the Angular specific EsLint devDependencies', async () => {
-      await addLintingGenerator(tree, {
-        prefix: 'myOrg',
-        projectName: appProjectName,
-        projectRoot: appProjectRoot,
-      });
-
-      const { dependencies, devDependencies } = readJson(tree, 'package.json');
-      expect(dependencies['@angular/core']).toEqual('14.1.0');
-      expect(devDependencies['@angular-eslint/eslint-plugin']).toBeDefined();
-      expect(
-        devDependencies['@angular-eslint/eslint-plugin-template']
-      ).toBeDefined();
-      expect(devDependencies['@angular-eslint/template-parser']).toBeDefined();
-    });
-
-    it('should correctly generate the .eslintrc.json file', async () => {
-      await addLintingGenerator(tree, {
-        prefix: 'myOrg',
-        projectName: appProjectName,
-        projectRoot: appProjectRoot,
-      });
-
-      const eslintConfig = readJson(tree, `${appProjectRoot}/.eslintrc.json`);
-      expect(eslintConfig).toMatchSnapshot();
-    });
-
-    it('should update the project with the right lint target configuration', async () => {
-      await addLintingGenerator(tree, {
-        prefix: 'myOrg',
-        projectName: appProjectName,
-        projectRoot: appProjectRoot,
-      });
-
-      const project = readProjectConfiguration(tree, appProjectName);
-      expect(project.targets.lint).toEqual({
-        executor: '@nrwl/linter:eslint',
-        options: {
-          lintFilePatterns: [
-            `${appProjectRoot}/**/*.ts`,
-            `${appProjectRoot}/**/*.html`,
-          ],
-        },
-        outputs: ['{options.outputFile}'],
-      });
-    });
+    const packageJson = readJson(tree, 'package.json');
+    expect(packageJson).toEqual(initialPackageJson);
   });
 });

@@ -1,16 +1,16 @@
-import type { GeneratorCallback, Tree } from '@nrwl/devkit';
+import type { GeneratorCallback, Tree } from '@nx/devkit';
 import {
   addDependenciesToPackageJson,
   generateFiles,
   joinPathFragments,
   names,
   readProjectConfiguration,
-} from '@nrwl/devkit';
-import { runTasksInSerial } from '@nrwl/workspace/src/utilities/run-tasks-in-serial';
+  runTasksInSerial,
+  updateProjectConfiguration,
+} from '@nx/devkit';
 
 import type { Schema } from '../schema';
 import { moduleFederationNodeVersion } from '../../../utils/versions';
-import { normalizeProjectName } from '../../application/lib/normalize-options';
 
 export async function setupSsrForHost(
   tree: Tree,
@@ -19,23 +19,38 @@ export async function setupSsrForHost(
   defaultRemoteManifest: { name: string; port: number }[]
 ) {
   const tasks: GeneratorCallback[] = [];
-  const project = readProjectConfiguration(tree, appName);
+  let project = readProjectConfiguration(tree, appName);
+  project.targets.serve.executor =
+    options.bundler === 'rspack'
+      ? '@nx/rspack:module-federation-ssr-dev-server'
+      : '@nx/react:module-federation-ssr-dev-server';
+  updateProjectConfiguration(tree, appName, project);
+
+  const pathToModuleFederationSsrFiles = options.typescriptConfiguration
+    ? `${
+        options.bundler === 'rspack' ? 'rspack-' : 'webpack-'
+      }module-federation-ssr-ts`
+    : `${
+        options.bundler === 'rspack' ? 'rspack-' : 'webpack-'
+      }module-federation-ssr`;
 
   generateFiles(
     tree,
-    joinPathFragments(__dirname, '../files/module-federation-ssr'),
+    joinPathFragments(__dirname, `../files/${pathToModuleFederationSsrFiles}`),
     project.root,
     {
       ...options,
+      static: !options?.dynamic,
+      port: Number(options?.devServerPort) || 4200,
       remotes: defaultRemoteManifest.map(({ name, port }) => {
-        const remote = normalizeProjectName({ ...options, name });
         return {
-          ...names(remote),
+          ...names(name),
           port,
         };
       }),
       appName,
       tmpl: '',
+      browserBuildOutputPath: project.targets.build.options.outputPath,
     }
   );
 

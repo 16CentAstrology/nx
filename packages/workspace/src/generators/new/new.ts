@@ -1,52 +1,87 @@
 import {
-  addDependenciesToPackageJson,
   formatFiles,
-  getWorkspacePath as devkitGetWorkspacePath,
+  getPackageManagerCommand,
   installPackagesTask,
-  names,
+  joinPathFragments,
   PackageManager,
   Tree,
-} from '@nrwl/devkit';
+} from '@nx/devkit';
 
 import { join } from 'path';
 import { Preset } from '../utils/presets';
-import { Linter } from '../../utils/lint';
+import { Linter, LinterType } from '../../utils/lint';
 import { generateWorkspaceFiles } from './generate-workspace-files';
 import { addPresetDependencies, generatePreset } from './generate-preset';
+import { execSync } from 'child_process';
 
 interface Schema {
   directory: string;
   name: string;
   appName?: string;
-  npmScope?: string;
   skipInstall?: boolean;
   style?: string;
-  nxCloud?: boolean;
   preset: string;
   defaultBase: string;
-  linter?: Linter;
+  framework?: string;
+  docker?: boolean;
+  js?: boolean;
+  nextAppDir?: boolean;
+  nextSrcDir?: boolean;
+  linter?: Linter | LinterType;
+  bundler?: 'vite' | 'webpack';
+  standaloneApi?: boolean;
+  routing?: boolean;
   packageManager?: PackageManager;
+  unitTestRunner?: 'jest' | 'vitest' | 'none';
+  e2eTestRunner?: 'cypress' | 'playwright' | 'detox' | 'jest' | 'none';
+  ssr?: boolean;
+  serverRouting?: boolean;
+  prefix?: string;
+  useGitHub?: boolean;
+  nxCloud?: 'yes' | 'skip' | 'circleci' | 'github';
+  formatter?: 'none' | 'prettier';
+  workspaces?: boolean;
+  workspaceGlobs?: string | string[];
 }
 
 export interface NormalizedSchema extends Schema {
   presetVersion?: string;
+  isCustomPreset: boolean;
+  nxCloudToken?: string;
+  workspaceGlobs?: string[];
 }
 
-export async function newGenerator(host: Tree, options: Schema) {
-  options = normalizeOptions(options);
-  validateOptions(options, host);
+export async function newGenerator(tree: Tree, opts: Schema) {
+  const options = normalizeOptions(opts);
+  validateOptions(options, tree);
 
-  await generateWorkspaceFiles(host, { ...options, nxCloud: undefined } as any);
+  options.nxCloudToken = await generateWorkspaceFiles(tree, options);
 
-  addPresetDependencies(host, options);
-  addCloudDependencies(host, options);
+  addPresetDependencies(tree, options);
 
-  await formatFiles(host);
+  await formatFiles(tree);
 
   return async () => {
-    installPackagesTask(host, false, options.directory, options.packageManager);
-    if (options.preset !== Preset.NPM && options.preset !== Preset.Core) {
-      await generatePreset(host, options);
+    if (!options.skipInstall) {
+      const pmc = getPackageManagerCommand(options.packageManager);
+      if (pmc.preInstall) {
+        execSync(pmc.preInstall, {
+          cwd: joinPathFragments(tree.root, options.directory),
+          stdio:
+            process.env.NX_GENERATE_QUIET === 'true' ? 'ignore' : 'inherit',
+          windowsHide: false,
+        });
+      }
+      installPackagesTask(
+        tree,
+        false,
+        options.directory,
+        options.packageManager
+      );
+    }
+    // TODO: move all of these into create-nx-workspace
+    if (options.preset !== Preset.NPM && !options.isCustomPreset) {
+      await generatePreset(tree, options);
     }
   };
 }
@@ -57,20 +92,19 @@ function validateOptions(options: Schema, host: Tree) {
   if (
     options.skipInstall &&
     options.preset !== Preset.Apps &&
-    options.preset !== Preset.Core &&
     options.preset !== Preset.TS &&
-    options.preset !== Preset.Empty &&
     options.preset !== Preset.NPM
   ) {
     throw new Error(`Cannot select a preset when skipInstall is set to true.`);
   }
-  if (options.skipInstall && options.nxCloud) {
-    throw new Error(`Cannot select nxCloud when skipInstall is set to true.`);
-  }
 
-  if (devkitGetWorkspacePath(host)) {
+  if (
+    (options.preset === Preset.NodeStandalone ||
+      options.preset === Preset.NodeMonorepo) &&
+    !options.framework
+  ) {
     throw new Error(
-      'Cannot generate a new workspace within an existing workspace'
+      `Cannot generate ${options.preset} without selecting a framework`
     );
   }
 
@@ -85,33 +119,48 @@ function validateOptions(options: Schema, host: Tree) {
   }
 }
 
-function normalizeOptions(options: NormalizedSchema): NormalizedSchema {
-  options.name = names(options.name).fileName;
-  if (!options.directory) {
-    options.directory = options.name;
-  }
-
+function parsePresetName(input: string): { package: string; version?: string } {
   // If the preset already contains a version in the name
   // -- my-package@2.0.1
   // -- @scope/package@version
-  const match = options.preset.match(
-    /^(?<package>(@.+\/)?[^@]+)(@(?<version>\d+\.\d+\.\d+))?$/
-  );
-  if (match) {
-    options.preset = match.groups.package;
-    options.presetVersion = match.groups.version;
-  }
+  const atIndex = input.indexOf('@', 1); // Skip the beginning @ because it denotes a scoped package.
 
-  return options;
+  if (atIndex > 0) {
+    return {
+      package: input.slice(0, atIndex),
+      version: input.slice(atIndex + 1),
+    };
+  } else {
+    if (!input) {
+      throw new Error(`Invalid package name: ${input}`);
+    }
+    return { package: input };
+  }
 }
 
-function addCloudDependencies(host: Tree, options: Schema) {
-  if (options.nxCloud) {
-    return addDependenciesToPackageJson(
-      host,
-      {},
-      { '@nrwl/nx-cloud': 'latest' },
-      join(options.directory, 'package.json')
-    );
+function normalizeOptions(options: Schema): NormalizedSchema {
+  const normalized: Partial<NormalizedSchema> = {
+    ...options,
+    workspaceGlobs: Array.isArray(options.workspaceGlobs)
+      ? options.workspaceGlobs
+      : options.workspaceGlobs
+      ? [options.workspaceGlobs]
+      : undefined,
+  };
+
+  if (!options.directory) {
+    normalized.directory = normalized.name;
   }
+
+  const parsed = parsePresetName(options.preset);
+
+  normalized.preset = parsed.package;
+  // explicitly specified "presetVersion" takes priority over the one from the package name
+  normalized.presetVersion ??= parsed.version;
+
+  normalized.isCustomPreset = !Object.values(Preset).includes(
+    options.preset as any
+  );
+
+  return normalized as NormalizedSchema;
 }

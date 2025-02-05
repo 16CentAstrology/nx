@@ -1,5 +1,6 @@
 {
   "extends": "<%= rootTsConfigPath %>",
+  <%_ if (!isTsSolutionSetup) { _%>
   "compilerOptions": {
     "allowSyntheticDefaultImports": true,
     "jsx": "react-native",
@@ -7,19 +8,14 @@
     "moduleResolution": "node",
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "composite": true,
     "declaration": true
   },
-  "files": [
-    "../../node_modules/@nrwl/react-native/typings/svg.d.ts"
-  ],
+  <%_ } _%>
+  "files": [],
   "include": [],
   "references": [
     {
       "path": "./tsconfig.app.json"
     }
-  ],
-  "exclude": [
-    "node_modules"
   ]
 }

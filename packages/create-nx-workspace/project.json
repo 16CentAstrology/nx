@@ -4,21 +4,10 @@
   "sourceRoot": "packages/create-nx-workspace",
   "projectType": "library",
   "targets": {
-    "test": {
-      "executor": "@nrwl/jest:jest",
-      "options": {
-        "jestConfig": "packages/create-nx-workspace/jest.config.ts",
-        "passWithNoTests": true
-      },
-      "outputs": ["{workspaceRoot}/coverage/packages/create-nx-workspace"]
-    },
     "build-base": {
-      "executor": "@nrwl/js:tsc",
+      "executor": "@nx/js:tsc",
       "options": {
-        "outputPath": "build/packages/create-nx-workspace",
-        "tsConfig": "packages/create-nx-workspace/tsconfig.lib.json",
-        "main": "packages/create-nx-workspace/bin/create-nx-workspace.ts",
-        "updateBuildableProjectDepsInPackageJson": false,
+        "main": "packages/create-nx-workspace/index.ts",
         "assets": [
           {
             "input": "packages/create-nx-workspace",
@@ -53,8 +42,7 @@
             "output": "/"
           }
         ]
-      },
-      "outputs": ["{options.outputPath}"]
+      }
     },
     "build": {
       "executor": "nx:run-commands",
@@ -73,21 +61,6 @@
         ],
         "parallel": false
       }
-    },
-    "lint": {
-      "executor": "@nrwl/linter:eslint",
-      "options": {
-        "lintFilePatterns": [
-          "packages/create-nx-workspace/**/*.ts",
-          "packages/create-nx-workspace/**/*.spec.ts",
-          "packages/create-nx-workspace/**/*_spec.ts",
-          "packages/create-nx-workspace/**/*.spec.tsx",
-          "packages/create-nx-workspace/**/*.spec.js",
-          "packages/create-nx-workspace/**/*.spec.jsx",
-          "packages/create-nx-workspace/**/*.d.ts"
-        ]
-      },
-      "outputs": ["{options.outputFile}"]
     }
   },
   "implicitDependencies": [
@@ -98,6 +71,7 @@
     "next",
     "angular",
     "nest",
-    "express"
+    "express",
+    "vue"
   ]
 }

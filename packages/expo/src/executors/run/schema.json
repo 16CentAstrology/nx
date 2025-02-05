@@ -3,7 +3,7 @@
   "outputCapture": "direct-nodejs",
   "cli": "nx",
   "$id": "NxExpoRun",
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "title": "Run iOS or Android application",
   "description": "Run Expo target options.",
   "type": "object",
@@ -17,7 +17,8 @@
     "xcodeConfiguration": {
       "type": "string",
       "description": "(iOS) Xcode configuration to use. Debug or Release",
-      "default": "Debug"
+      "default": "Debug",
+      "x-priority": "important"
     },
     "scheme": {
       "type": "string",
@@ -26,17 +27,13 @@
     "variant": {
       "type": "string",
       "description": "(Android) Specify your app's build variant (e.g. debug, release).",
-      "default": "debug"
+      "default": "debug",
+      "x-priority": "important"
     },
     "device": {
       "type": "string",
       "description": "Device name or UDID to build the app on. The value is not required if you have a single device connected.",
       "alias": "d"
-    },
-    "sync": {
-      "type": "boolean",
-      "description": "Syncs npm dependencies to package.json (for React Native autolink). Always true when --install is used.",
-      "default": true
     },
     "port": {
       "type": "number",
@@ -50,12 +47,19 @@
     },
     "install": {
       "type": "boolean",
-      "description": "Should install missing dependencies before building."
+      "description": "Installing npm packages and CocoaPods before building.",
+      "default": true
     },
     "buildCache": {
       "type": "boolean",
       "description": "Should use derived data for builds."
+    },
+    "clean": {
+      "type": "boolean",
+      "description": "Delete the native folders and regenerate them before applying changes",
+      "default": false
     }
   },
-  "required": ["platform"]
+  "required": ["platform"],
+  "examplesFile": "../../../docs/run-examples.md"
 }

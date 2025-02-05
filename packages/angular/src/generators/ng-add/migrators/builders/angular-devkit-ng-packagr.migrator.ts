@@ -2,23 +2,17 @@ import type {
   ProjectConfiguration,
   TargetConfiguration,
   Tree,
-} from '@nrwl/devkit';
+} from '@nx/devkit';
 import {
   joinPathFragments,
   offsetFromRoot,
   updateJson,
   updateProjectConfiguration,
-} from '@nrwl/devkit';
-import { getRootTsConfigPathInTree } from '@nrwl/workspace/src/utilities/typescript';
+} from '@nx/devkit';
+import { getRootTsConfigPathInTree } from '@nx/js';
 import { basename } from 'path';
 import { addBuildableLibrariesPostCssDependencies } from '../../../utils/dependencies';
-import type {
-  Logger,
-  ProjectMigrationInfo,
-  ValidationError,
-  ValidationResult,
-} from '../../utilities';
-import { arrayToString } from '../../utilities';
+import type { Logger, ProjectMigrationInfo } from '../../utilities';
 import { BuilderMigrator } from './builder.migrator';
 
 export class AngularDevkitNgPackagrMigrator extends BuilderMigrator {
@@ -30,7 +24,7 @@ export class AngularDevkitNgPackagrMigrator extends BuilderMigrator {
   ) {
     super(
       tree,
-      '@angular-devkit/build-angular:ng-packagr',
+      ['@angular-devkit/build-angular:ng-packagr', '@angular/build:ng-packagr'],
       undefined,
       project,
       projectConfig,
@@ -39,10 +33,17 @@ export class AngularDevkitNgPackagrMigrator extends BuilderMigrator {
   }
 
   override migrate(): void {
+    if (this.skipMigration) {
+      return;
+    }
+
     if (!this.targets.size) {
       this.logger.warn(
-        `There is no target in the project configuration using the ${this.builderName} builder. This might not be an issue. ` +
-          `Skipping updating the build configuration.`
+        `There is no target in the project configuration using the ${this.possibleBuilderNames
+          .map((b) => `"${b}"`)
+          .join(', ')} builder${
+          this.possibleBuilderNames.length > 1 ? 's' : ''
+        }. This might not be an issue. Skipping updating the build configuration.`
       );
       return;
     }
@@ -56,27 +57,11 @@ export class AngularDevkitNgPackagrMigrator extends BuilderMigrator {
     }
   }
 
-  override validate(): ValidationResult {
-    const errors: ValidationError[] = [];
-    // TODO(leo): keeping restriction until the full refactor is done and we start
-    // expanding what's supported.
-    if (this.targets.size > 1) {
-      errors.push({
-        message: `There is more than one target using a builder that is used to build the project (${arrayToString(
-          [...this.targets.keys()]
-        )}).`,
-        hint: `Make sure the project only has one target with a builder that is used to build the project.`,
-      });
-    }
-
-    return errors.length ? errors : null;
-  }
-
   private updateTargetConfiguration(
     targetName: string,
     target: TargetConfiguration
   ): void {
-    target.executor = '@nrwl/angular:package';
+    target.executor = '@nx/angular:package';
 
     if (
       !target.options &&

@@ -1,233 +1,284 @@
 import {
   cleanupProject,
-  createFile,
-  exists,
-  fileExists,
-  killPorts,
-  listFiles,
+  killProcessAndPorts,
   newProject,
-  promisifiedTreeKill,
-  readFile,
-  rmDist,
+  readJson,
   runCLI,
-  runCLIAsync,
   runCommandUntil,
-  tmpProjPath,
   uniq,
   updateFile,
-  updateProjectConfig,
-} from '@nrwl/e2e/utils';
+  updateJson,
+} from '@nx/e2e/utils';
+import { ChildProcess } from 'child_process';
+import { names } from '@nx/devkit';
 
 const myApp = uniq('my-app');
+const myVueApp = uniq('my-vue-app');
 
-describe('Vite Plugin', () => {
+describe('@nx/vite/plugin', () => {
   let proj: string;
-
-  describe('Vite on React apps', () => {
-    describe('convert React webpack app to vite using the vite:configuration generator', () => {
-      beforeEach(() => {
-        proj = newProject();
-        runCLI(`generate @nrwl/react:app ${myApp} --bundler=webpack`);
-        runCLI(`generate @nrwl/vite:configuration ${myApp}`);
-      });
-      afterEach(() => cleanupProject());
-
-      it('should serve application in dev mode with custom options', async () => {
-        const port = 4212;
-        const p = await runCommandUntil(
-          `run ${myApp}:serve --port=${port} --https=true`,
-          (output) => {
-            return (
-              output.includes('Local:') &&
-              output.includes(`:${port}`) &&
-              output.includes('https')
-            );
-          }
-        );
-        try {
-          await promisifiedTreeKill(p.pid, 'SIGKILL');
-          await killPorts(port);
-        } catch {
-          // ignore
-        }
-      }, 200000);
-
-      it('should test application', async () => {
-        const result = await runCLIAsync(`test ${myApp}`);
-        expect(result.combinedOutput).toContain(
-          `Successfully ran target test for project ${myApp}`
-        );
-      });
-    });
-
-    describe('set up new React app with --bundler=vite option', () => {
-      beforeEach(() => {
-        proj = newProject();
-        runCLI(`generate @nrwl/react:app ${myApp} --bundler=vite`);
-        createFile(`apps/${myApp}/public/hello.md`, `# Hello World`);
-        updateFile(
-          `apps/${myApp}/src/environments/environment.prod.ts`,
-          `export const environment = {
-            production: true,
-            myTestVar: 'MyProductionValue',
-          };`
-        );
-        updateFile(
-          `apps/${myApp}/src/environments/environment.ts`,
-          `export const environment = {
-            production: false,
-            myTestVar: 'MyDevelopmentValue',
-          };`
-        );
-
-        updateFile(
-          `apps/${myApp}/src/app/app.tsx`,
-          `
-            import { environment } from './../environments/environment';
-            export function App() {
-              return (
-                <>
-                  <h1>{environment.myTestVar}</h1>
-                  <p>Welcome ${myApp}!</p>
-                </>
-              );
-            }
-            export default App;
-          `
-        );
-
-        updateProjectConfig(myApp, (config) => {
-          config.targets.build.options.fileReplacements = [
-            {
-              replace: `apps/${myApp}/src/environments/environment.ts`,
-              with: `apps/${myApp}/src/environments/environment.prod.ts`,
-            },
-          ];
-          return config;
-        });
-      });
-      afterEach(() => cleanupProject());
-      it('should build application', async () => {
-        runCLI(`build ${myApp}`);
-        expect(readFile(`dist/apps/${myApp}/favicon.ico`)).toBeDefined();
-        expect(readFile(`dist/apps/${myApp}/hello.md`)).toBeDefined();
-        expect(readFile(`dist/apps/${myApp}/index.html`)).toBeDefined();
-        const fileArray = listFiles(`dist/apps/${myApp}/assets`);
-        const mainBundle = fileArray.find((file) => file.endsWith('.js'));
-        expect(readFile(`dist/apps/${myApp}/assets/${mainBundle}`)).toContain(
-          'MyProductionValue'
-        );
-        expect(
-          readFile(`dist/apps/${myApp}/assets/${mainBundle}`)
-        ).not.toContain('MyDevelopmentValue');
-        rmDist();
-      }, 200000);
-    });
+  let originalEnv: string;
+  beforeAll(() => {
+    originalEnv = process.env.NX_ADD_PLUGINS;
+    process.env.NX_ADD_PLUGINS = 'true';
   });
 
-  describe('Vite on Web apps', () => {
-    describe('set up new @nrwl/web app with --bundler=vite option', () => {
-      beforeEach(() => {
-        proj = newProject();
-        runCLI(`generate @nrwl/web:app ${myApp} --bundler=vite`);
+  afterAll(() => {
+    process.env.NX_ADD_PLUGINS = originalEnv;
+    cleanupProject();
+  });
+
+  describe('with react', () => {
+    beforeAll(() => {
+      proj = newProject({
+        packages: ['@nx/react', '@nx/vue'],
       });
-      afterEach(() => cleanupProject());
-      it('should build application', async () => {
-        runCLI(`build ${myApp}`);
-        expect(readFile(`dist/apps/${myApp}/index.html`)).toBeDefined();
-        const fileArray = listFiles(`dist/apps/${myApp}/assets`);
-        const mainBundle = fileArray.find((file) => file.endsWith('.js'));
-        expect(
-          readFile(`dist/apps/${myApp}/assets/${mainBundle}`)
-        ).toBeDefined();
-        expect(fileExists(`dist/apps/${myApp}/package.json`)).toBeFalsy();
-        rmDist();
+      runCLI(
+        `generate @nx/react:app ${myApp} --directory=apps/${myApp} --bundler=vite --unitTestRunner=vitest`
+      );
+      runCLI(
+        `generate @nx/vue:app ${myVueApp} --directory=apps/${myVueApp} --unitTestRunner=vitest`
+      );
+    });
+
+    afterAll(() => {
+      cleanupProject();
+    });
+
+    describe('build and test React app', () => {
+      it('should build application', () => {
+        expect(() => runCLI(`build ${myApp}`)).not.toThrow();
+      }, 200_000);
+
+      it('should test application', () => {
+        expect(() => runCLI(`test ${myApp} --watch=false`)).not.toThrow();
+      }, 200_000);
+    });
+    describe('build and test Vue app', () => {
+      it('should build application', () => {
+        expect(() => runCLI(`build ${myVueApp}`)).not.toThrow();
+      }, 200_000);
+
+      it('should test application', () => {
+        expect(() => runCLI(`test ${myVueApp} --watch=false`)).not.toThrow();
       }, 200_000);
     });
 
-    describe('convert @nrwl/web webpack app to vite using the vite:configuration generator', () => {
-      beforeEach(() => {
-        proj = newProject();
-        runCLI(`generate @nrwl/web:app ${myApp} --bundler=webpack`);
-        runCLI(`generate @nrwl/vite:configuration ${myApp}`);
-      });
-      afterEach(() => cleanupProject());
-      it('should build application', async () => {
-        runCLI(`build ${myApp}`);
-        expect(readFile(`dist/apps/${myApp}/index.html`)).toBeDefined();
-        const fileArray = listFiles(`dist/apps/${myApp}/assets`);
-        const mainBundle = fileArray.find((file) => file.endsWith('.js'));
-        expect(
-          readFile(`dist/apps/${myApp}/assets/${mainBundle}`)
-        ).toBeDefined();
-        rmDist();
-      }, 200000);
+    describe('should support buildable libraries', () => {
+      it('should build the library and application successfully', () => {
+        const myApp = uniq('myapp');
+        runCLI(
+          `generate @nx/react:app ${myApp} --directory=apps/${myApp} --bundler=vite --unitTestRunner=vitest`
+        );
 
-      it('should serve application in dev mode with custom port', async () => {
-        const port = 4212;
-        const p = await runCommandUntil(
-          `run ${myApp}:serve --port=${port}`,
+        const myBuildableLib = uniq('mybuildablelib');
+        runCLI(
+          `generate @nx/react:library ${myBuildableLib} --directory=libs/${myBuildableLib} --bundler=vite --unitTestRunner=vitest --buildable`
+        );
+
+        const exportedLibraryComponent = names(myBuildableLib).className;
+
+        updateFile(
+          `apps/${myApp}/src/app/App.tsx`,
+          `import NxWelcome from './nx-welcome';
+          import { ${exportedLibraryComponent} } from '@proj/${myBuildableLib}';
+          export function App() {
+            return (
+              <div>
+                <${exportedLibraryComponent} />
+                <NxWelcome title="viteib" />
+              </div>
+            );
+          }
+          export default App;`
+        );
+
+        updateFile(
+          `apps/${myApp}/vite.config.ts`,
+          `/// <reference types='vitest' />
+          import { defineConfig } from 'vite';
+          import react from '@vitejs/plugin-react';
+          import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
+
+          export default defineConfig({
+            root: __dirname,
+            cacheDir: '../../node_modules/.vite/${myApp}',
+          
+            server: {
+              port: 4200,
+              host: 'localhost',
+            },
+          
+            preview: {
+              port: 4300,
+              host: 'localhost',
+            },
+          
+            plugins: [react(), nxViteTsPaths({buildLibsFromSource: false})],
+          
+            build: {
+              outDir: '../../dist/${myApp}',
+              emptyOutDir: true,
+              reportCompressedSize: true,
+              commonjsOptions: {
+                transformMixedEsModules: true,
+              },
+            },
+          });`
+        );
+
+        expect(() => runCLI(`build ${myApp}`)).not.toThrow();
+      });
+    });
+
+    it('should run serve-static', async () => {
+      let process: ChildProcess;
+      const port = 8081;
+
+      try {
+        process = await runCommandUntil(
+          `serve-static ${myApp} --port=${port}`,
           (output) => {
-            return output.includes('Local:') && output.includes(`:${port}`);
+            return output.includes(`http://localhost:${port}`);
           }
         );
-        try {
-          await promisifiedTreeKill(p.pid, 'SIGKILL');
-          await killPorts(port);
-        } catch {
-          // ignore
-        }
-      }, 200000);
+      } catch (err) {
+        console.error(err);
+      }
 
-      it('should test application', async () => {
-        const result = await runCLIAsync(`test ${myApp}`);
-        expect(result.combinedOutput).toContain(
-          `Successfully ran target test for project ${myApp}`
-        );
+      // port and process cleanup
+      if (process && process.pid) {
+        await killProcessAndPorts(process.pid, port);
+      }
+    });
+
+    it('should support importing .js and .css files in tsconfig path', () => {
+      const mylib = uniq('mylib');
+      runCLI(
+        `generate @nx/react:library libs/${mylib} --bundler=none --unitTestRunner=vitest`
+      );
+      updateFile(`libs/${mylib}/src/styles.css`, `.foo {}`);
+      updateFile(`libs/${mylib}/src/foo.mjs`, `export const foo = 'foo';`);
+      updateFile(
+        `libs/${mylib}/src/foo.spec.ts`,
+        `
+          import styles from '~/styles.css?inline';
+          import { foo } from '~/foo.mjs';
+          test('should work', () => {
+            expect(styles).toBeDefined();
+            expect(foo).toBeDefined();
+          });
+        `
+      );
+      updateJson('tsconfig.base.json', (json) => {
+        json.compilerOptions.paths['~/*'] = [`libs/${mylib}/src/*`];
+        return json;
       });
-    }),
-      100_000;
+
+      expect(() => runCLI(`test ${mylib}`)).not.toThrow();
+    });
+
+    it('should support importing files with "." in the name in tsconfig path', () => {
+      const mylib = uniq('mylib');
+      runCLI(
+        `generate @nx/react:library libs/${mylib} --bundler=none --unitTestRunner=vitest`
+      );
+      updateFile(`libs/${mylib}/src/styles.module.css`, `.foo {}`);
+      updateFile(`libs/${mylib}/src/foo.enum.ts`, `export const foo = 'foo';`);
+      updateFile(`libs/${mylib}/src/bar.enum.ts`, `export const bar = 'bar';`);
+      updateFile(
+        `libs/${mylib}/src/foo.spec.ts`,
+        `
+          import styles from '~/styles.module.css';
+          import { foo } from '~/foo.enum.ts';
+          import { bar } from '~/bar.enum';
+          test('should work', () => {
+            expect(styles).toBeDefined();
+            expect(foo).toBeDefined();
+            expect(bar).toBeDefined();
+          });
+        `
+      );
+      updateJson('tsconfig.base.json', (json) => {
+        json.compilerOptions.paths['~/*'] = [`libs/${mylib}/src/*`];
+        return json;
+      });
+
+      expect(() => runCLI(`test ${mylib}`)).not.toThrow();
+    });
+
+    it('should not partially match a path mapping', () => {
+      const lib1 = uniq('lib1');
+      const lib2 = uniq('lib2');
+      const lib3 = uniq('lib3');
+      runCLI(
+        `generate @nx/react:library libs/${lib1} --bundler=none --unitTestRunner=vitest`
+      );
+      runCLI(
+        `generate @nx/react:library libs/${lib2} --bundler=none --unitTestRunner=vitest`
+      );
+      runCLI(
+        `generate @nx/react:library libs/${lib3} --bundler=none --unitTestRunner=vitest`
+      );
+      updateFile(`libs/${lib1}/src/foo.enum.ts`, `export const foo = 'foo';`);
+      updateFile(`libs/${lib2}/src/bar.enum.ts`, `export const bar = 'bar';`);
+      updateFile(`libs/${lib3}/src/bam.enum.ts`, `export const bam = 'bam';`);
+      updateFile(
+        `libs/${lib1}/src/foo.spec.ts`,
+        `
+          import { foo } from 'match-lib-deep/foo.enum';
+          import { bar } from 'match-lib-top-level';
+          import { bam } from 'match-lib/bam.enum';
+          test('should work', () => {
+            expect(foo).toBeDefined();
+            expect(bar).toBeDefined();
+            expect(bam).toBeDefined();
+          });
+        `
+      );
+      updateJson('tsconfig.base.json', (json) => {
+        json.compilerOptions.paths['match-lib-deep/*'] = [`libs/${lib1}/src/*`];
+        json.compilerOptions.paths['match-lib-top-level'] = [
+          `libs/${lib2}/src/bar.enum.ts`,
+        ];
+        json.compilerOptions.paths['match-lib/*'] = [`libs/${lib3}/src/*`];
+        return json;
+      });
+
+      expect(() => runCLI(`test ${lib1}`)).not.toThrow();
+    });
   });
 
-  describe('should be able to create libs that use vitest', () => {
-    const lib = uniq('my-lib');
-    beforeEach(() => {
-      proj = newProject();
-    }),
-      100_000;
+  describe('react with vitest only', () => {
+    const reactVitest = uniq('reactVitest');
 
-    it('should be able to run tests', async () => {
-      runCLI(`generate @nrwl/react:lib ${lib} --unitTestRunner=vitest`);
-      expect(exists(tmpProjPath(`libs/${lib}/vite.config.ts`))).toBeTruthy();
-
-      const result = await runCLIAsync(`test ${lib}`);
-      expect(result.combinedOutput).toContain(
-        `Successfully ran target test for project ${lib}`
-      );
-    }, 100_000);
-
-    it('should be able to run tests with inSourceTests set to true', async () => {
-      runCLI(
-        `generate @nrwl/react:lib ${lib} --unitTestRunner=vitest --inSourceTests`
-      );
-      expect(
-        exists(tmpProjPath(`libs/${lib}/src/lib/${lib}.spec.tsx`))
-      ).toBeFalsy();
-
-      updateFile(`libs/${lib}/src/lib/${lib}.tsx`, (content) => {
-        content += `
-        if (import.meta.vitest) {
-          const { expect, it } = import.meta.vitest;
-          it('should be successful', () => {
-            expect(1 + 1).toBe(2);
-          });
-        }
-        `;
-        return content;
+    beforeAll(() => {
+      proj = newProject({
+        packages: ['@nx/vite', '@nx/react'],
       });
+      runCLI(
+        `generate @nx/react:app ${reactVitest} --bundler=webpack --unitTestRunner=vitest --e2eTestRunner=none`
+      );
+    });
 
-      const result = await runCLIAsync(`test ${lib}`);
-      expect(result.combinedOutput).toContain(`1 passed`);
-    }, 100_000);
+    afterAll(() => {
+      cleanupProject();
+    });
+
+    it('should contain targets build, test and lint', () => {
+      const nxJson = readJson('nx.json');
+
+      const vitePlugin = nxJson.plugins.find(
+        (p) => p.plugin === '@nx/vite/plugin'
+      );
+      expect(vitePlugin).toBeDefined();
+      expect(vitePlugin.options.buildTargetName).toEqual('build');
+      expect(vitePlugin.options.testTargetName).toEqual('test');
+    });
+
+    it('project.json should not contain test target', () => {
+      const projectJson = readJson(`${reactVitest}/project.json`);
+      expect(projectJson.targets.test).toBeUndefined();
+    });
   });
 });

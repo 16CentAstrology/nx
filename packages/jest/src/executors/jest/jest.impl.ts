@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { runCLI } from 'jest';
 import { readConfig, readConfigs } from 'jest-config';
 import { utils as jestReporterUtils } from '@jest/reporters';
@@ -12,20 +11,23 @@ import {
   stripIndents,
   TaskGraph,
   workspaceRoot,
-} from '@nrwl/devkit';
+} from '@nx/devkit';
 import { getSummary } from './summary';
 import { readFileSync } from 'fs';
-
+import type { BatchResults } from 'nx/src/tasks-runner/batch/batch-messages';
 process.env.NODE_ENV ??= 'test';
 
 export async function jestExecutor(
   options: JestExecutorOptions,
   context: ExecutorContext
 ): Promise<{ success: boolean }> {
-  const config = await jestConfigParser(options, context);
+  // Jest registers ts-node with module CJS https://github.com/SimenB/jest/blob/v29.6.4/packages/jest-config/src/readConfigFileAndSetRootDir.ts#L117-L119
+  // We want to support of ESM via 'module':'nodenext', we need to override the resolution until Jest supports it.
+  process.env.TS_NODE_COMPILER_OPTIONS ??= '{"moduleResolution":"node10"}';
+
+  const config = await parseJestConfig(options, context);
 
   const { results } = await runCLI(config, [options.jestConfig]);
-
   return { success: results.success };
 }
 
@@ -37,13 +39,14 @@ function getExtraArgs(
   for (const key of Object.keys(options)) {
     if (!schema.properties[key]) {
       extraArgs[key] = options[key];
+      process.argv.push(`--${key}=${options[key]}`);
     }
   }
 
   return extraArgs;
 }
 
-export async function jestConfigParser(
+export async function parseJestConfig(
   options: JestExecutorOptions,
   context: ExecutorContext,
   multiProjects = false
@@ -71,6 +74,7 @@ export async function jestConfigParser(
     ci: options.ci,
     color: options.color,
     detectOpenHandles: options.detectOpenHandles,
+    forceExit: options.forceExit,
     logHeapUsage: options.logHeapUsage,
     detectLeaks: options.detectLeaks,
     json: options.json,
@@ -94,6 +98,7 @@ export async function jestConfigParser(
     useStderr: options.useStderr,
     watch: options.watch,
     watchAll: options.watchAll,
+    randomize: options.randomize,
   };
 
   if (!multiProjects) {
@@ -155,7 +160,7 @@ export async function batchJest(
   inputs: Record<string, JestExecutorOptions>,
   overrides: JestExecutorOptions,
   context: ExecutorContext
-): Promise<Record<string, { success: boolean; terminalOutput: string }>> {
+): Promise<BatchResults> {
   let configPaths: string[] = [];
   let selectedProjects: string[] = [];
   let projectsWithNoName: [string, string][] = [];
@@ -193,7 +198,7 @@ export async function batchJest(
       You can learn more about this requirement from Jest here: https://jestjs.io/docs/cli#--selectprojects-project1--projectn`
     );
   }
-  const parsedConfigs = await jestConfigParser(overrides, context, true);
+  const parsedConfigs = await parseJestConfig(overrides, context, true);
 
   const { globalConfig, results } = await runCLI(
     {
@@ -202,38 +207,49 @@ export async function batchJest(
     },
     [workspaceRoot]
   );
-
   const { configs } = await readConfigs({ $0: undefined, _: [] }, configPaths);
-  const jestTaskExecutionResults: Record<
-    string,
-    { success: boolean; terminalOutput: string }
-  > = {};
+  const jestTaskExecutionResults: BatchResults = {};
 
   for (let i = 0; i < taskGraph.roots.length; i++) {
     let root = taskGraph.roots[i];
     const aggregatedResults = makeEmptyAggregatedTestResult();
     aggregatedResults.startTime = results.startTime;
-
+    let endTime: number;
     const projectRoot = join(context.root, taskGraph.tasks[root].projectRoot);
 
     let resultOutput = '';
     for (const testResult of results.testResults) {
       if (testResult.testFilePath.startsWith(projectRoot)) {
+        aggregatedResults.startTime = aggregatedResults.startTime
+          ? Math.min(aggregatedResults.startTime, testResult.perfStats.start)
+          : testResult.perfStats.start;
+
+        endTime = endTime
+          ? Math.max(testResult.perfStats.end, endTime)
+          : testResult.perfStats.end;
+
         addResult(aggregatedResults, testResult);
+
         resultOutput +=
           '\n\r' +
           jestReporterUtils.getResultHeader(
-            testResult,
+            testResult as any,
             globalConfig as any,
             configs[i] as any
           );
       }
     }
+
     aggregatedResults.numTotalTestSuites = aggregatedResults.testResults.length;
 
     jestTaskExecutionResults[root] = {
+      startTime: aggregatedResults.startTime,
+      endTime,
       success: aggregatedResults.numFailedTests === 0,
-      terminalOutput: resultOutput + '\n\r\n\r' + getSummary(aggregatedResults),
+      // TODO(caleb): getSummary assumed endTime is Date.now().
+      // might need to make own method to correctly set the endtime base on tests instead of _now_
+      terminalOutput:
+        resultOutput + '\n\r\n\r' + getSummary(aggregatedResults as any),
     };
   }
 

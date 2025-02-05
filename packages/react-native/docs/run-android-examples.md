@@ -7,7 +7,7 @@
   "targets": {
     //...
     "run-android": {
-      "executor": "@nrwl/react-native:run-android",
+      "executor": "@nx/react-native:run-android",
       "options": {}
     }
   }
@@ -22,7 +22,7 @@ nx run mobile:run-android
 
 {% tabs %}
 {% tab label="Run on a specific device/simulator" %}
-To see all the avaiable emulators, run command:
+To see all the available emulators, run command:
 
 ```bash
 emulator -list-avds
@@ -32,7 +32,7 @@ The `deviceId` option allows you to launch your android app in a specific device
 
 ```json
     "run-android": {
-      "executor": "@nrwl/react-native:run-android",
+      "executor": "@nx/react-native:run-android",
       "options": {
         "deviceId": "Pixel_5_API_30"
       }
@@ -41,13 +41,13 @@ The `deviceId` option allows you to launch your android app in a specific device
 
 {% /tab %}
 {% tab label="Run the debug/release app" %}
-The `variant` option allows to specify the build variant, such as `debug` or `release`.
+The `mode` option allows to specify the build variant, such as `debug` or `release`.
 
 ```json
     "run-android": {
-      "executor": "@nrwl/react-native:run-android",
+      "executor": "@nx/react-native:run-android",
       "options": {
-        "variant": "release"
+        "mode": "release"
       }
     }
 ```

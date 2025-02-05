@@ -3,35 +3,29 @@ import {
   GeneratorCallback,
   readProjectConfiguration,
   Tree,
-} from '@nrwl/devkit';
+} from '@nx/devkit';
 import {
   addTailwindConfig,
-  addTailwindConfigPathToProject,
   addTailwindRequiredPackages,
   detectTailwindInstalledVersion,
   normalizeOptions,
   updateApplicationStyles,
+  validateBuildTarget,
 } from './lib';
 import { GeneratorOptions } from './schema';
-import { getGeneratorDirectoryForInstalledAngularVersion } from '../../utils/get-generator-directory-for-ng-version';
-import { join } from 'path';
 
 export async function setupTailwindGenerator(
   tree: Tree,
   rawOptions: GeneratorOptions
 ): Promise<GeneratorCallback> {
-  const generatorDirectory =
-    getGeneratorDirectoryForInstalledAngularVersion(tree);
-  if (generatorDirectory) {
-    let previousGenerator = await import(
-      join(__dirname, generatorDirectory, 'setup-tailwind')
-    );
-    await previousGenerator.default(tree, rawOptions);
-    return;
-  }
-
   const options = normalizeOptions(rawOptions);
   const project = readProjectConfiguration(tree, options.project);
+
+  if (rawOptions.buildTarget && !project.targets?.[rawOptions.buildTarget]) {
+    throw new Error(
+      `The provided target "${options.buildTarget}" was not found for project "${options.project}". Please provide a valid build target.`
+    );
+  }
 
   const tailwindInstalledVersion = detectTailwindInstalledVersion(tree);
 
@@ -47,7 +41,7 @@ export async function setupTailwindGenerator(
   if (project.projectType === 'application') {
     updateApplicationStyles(tree, options, project);
   } else if (project.projectType === 'library') {
-    addTailwindConfigPathToProject(tree, options, project);
+    validateBuildTarget(options, project);
   }
 
   if (!options.skipFormat) {

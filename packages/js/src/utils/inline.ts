@@ -1,12 +1,13 @@
-import type { ExecutorContext, ProjectGraphProjectNode } from '@nrwl/devkit';
-import { readJsonFile, normalizePath } from '@nrwl/devkit';
+import type { ExecutorContext, ProjectGraphProjectNode } from '@nx/devkit';
+import { normalizePath, readJsonFile } from '@nx/devkit';
 import {
-  copySync,
+  cpSync,
+  existsSync,
   readdirSync,
   readFileSync,
-  removeSync,
+  rmSync,
   writeFileSync,
-} from 'fs-extra';
+} from 'node:fs';
 import { join, relative } from 'path';
 import type { NormalizedExecutorOptions } from './schema';
 
@@ -31,12 +32,18 @@ export function isInlineGraphEmpty(inlineGraph: InlineProjectGraph): boolean {
 export function handleInliningBuild(
   context: ExecutorContext,
   options: NormalizedExecutorOptions,
-  tsConfigPath: string
+  tsConfigPath: string,
+  projectName: string = context.projectName
 ): InlineProjectGraph {
   const tsConfigJson = readJsonFile(tsConfigPath);
   const pathAliases =
-    tsConfigJson['compilerOptions']['paths'] || readBasePathAliases(context);
-  const inlineGraph = createInlineGraph(context, options, pathAliases);
+    tsConfigJson['compilerOptions']?.['paths'] || readBasePathAliases(context);
+  const inlineGraph = createInlineGraph(
+    context,
+    options,
+    pathAliases,
+    projectName
+  );
 
   if (isInlineGraphEmpty(inlineGraph)) {
     return inlineGraph;
@@ -57,9 +64,11 @@ export function postProcessInlinedDependencies(
   }
 
   const parentDistPath = join(outputPath, parentOutputPath);
+  const markedForDeletion = new Set<string>();
 
   // move parentOutput
   movePackage(parentDistPath, outputPath);
+  markedForDeletion.add(parentDistPath);
 
   const inlinedDepsDestOutputRecord: Record<string, string> = {};
   // move inlined outputs
@@ -76,12 +85,10 @@ export function postProcessInlinedDependencies(
       const isBuildable = !!inlineDependency.buildOutputPath;
 
       if (isBuildable) {
-        copySync(depOutputPath, destDepOutputPath, {
-          overwrite: true,
-          recursive: true,
-        });
+        cpSync(depOutputPath, destDepOutputPath, { recursive: true });
       } else {
         movePackage(depOutputPath, destDepOutputPath);
+        markedForDeletion.add(depOutputPath);
       }
 
       // TODO: hard-coded "src"
@@ -90,12 +97,29 @@ export function postProcessInlinedDependencies(
     }
   }
 
+  markedForDeletion.forEach((path) =>
+    rmSync(path, { recursive: true, force: true })
+  );
   updateImports(outputPath, inlinedDepsDestOutputRecord);
 }
 
 function readBasePathAliases(context: ExecutorContext) {
-  const tsConfigPath = join(context.root, 'tsconfig.base.json');
-  return readJsonFile(tsConfigPath)?.['compilerOptions']['paths'] || {};
+  return readJsonFile(getRootTsConfigPath(context))?.['compilerOptions'][
+    'paths'
+  ];
+}
+
+export function getRootTsConfigPath(context: ExecutorContext): string | null {
+  for (const tsConfigName of ['tsconfig.base.json', 'tsconfig.json']) {
+    const tsConfigPath = join(context.root, tsConfigName);
+    if (existsSync(tsConfigPath)) {
+      return tsConfigPath;
+    }
+  }
+
+  throw new Error(
+    'Could not find a root tsconfig.json or tsconfig.base.json file.'
+  );
 }
 
 function emptyInlineGraph(): InlineProjectGraph {
@@ -120,7 +144,7 @@ function createInlineGraph(
   context: ExecutorContext,
   options: NormalizedExecutorOptions,
   pathAliases: Record<string, string[]>,
-  projectName: string = context.projectName,
+  projectName: string,
   inlineGraph: InlineProjectGraph = emptyInlineGraph()
 ) {
   if (options.external == null) return inlineGraph;
@@ -248,18 +272,20 @@ function buildInlineGraphExternals(
 }
 
 function movePackage(from: string, to: string) {
-  copySync(from, to, { overwrite: true, recursive: true });
-  removeSync(from);
+  if (from === to) return;
+  cpSync(from, to, { recursive: true });
 }
 
 function updateImports(
   destOutputPath: string,
   inlinedDepsDestOutputRecord: Record<string, string>
 ) {
+  const pathAliases = Object.keys(inlinedDepsDestOutputRecord);
+  if (pathAliases.length == 0) {
+    return;
+  }
   const importRegex = new RegExp(
-    Object.keys(inlinedDepsDestOutputRecord)
-      .map((pathAlias) => `["'](${pathAlias})["']`)
-      .join('|'),
+    pathAliases.map((pathAlias) => `["'](${pathAlias})["']`).join('|'),
     'g'
   );
   recursiveUpdateImport(
@@ -272,7 +298,8 @@ function updateImports(
 function recursiveUpdateImport(
   dirPath: string,
   importRegex: RegExp,
-  inlinedDepsDestOutputRecord: Record<string, string>
+  inlinedDepsDestOutputRecord: Record<string, string>,
+  rootParentDir?: string
 ) {
   const files = readdirSync(dirPath, { withFileTypes: true });
   for (const file of files) {
@@ -285,6 +312,9 @@ function recursiveUpdateImport(
       const fileContent = readFileSync(filePath, 'utf-8');
       const updatedContent = fileContent.replace(importRegex, (matched) => {
         const result = matched.replace(/['"]/g, '');
+        // If a match is the same as the rootParentDir, we're checking its own files so we return the matched as in no changes.
+        if (result === rootParentDir || !inlinedDepsDestOutputRecord[result])
+          return matched;
         const importPath = `"${relative(
           dirPath,
           inlinedDepsDestOutputRecord[result]
@@ -296,7 +326,8 @@ function recursiveUpdateImport(
       recursiveUpdateImport(
         join(dirPath, file.name),
         importRegex,
-        inlinedDepsDestOutputRecord
+        inlinedDepsDestOutputRecord,
+        rootParentDir || file.name
       );
     }
   }

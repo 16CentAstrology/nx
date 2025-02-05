@@ -1,76 +1,230 @@
 import {
-  convertNxGenerator,
   formatFiles,
   GeneratorCallback,
+  joinPathFragments,
+  readJson,
+  readNxJson,
   readProjectConfiguration,
+  runTasksInSerial,
   Tree,
-} from '@nrwl/devkit';
-import { runTasksInSerial } from '@nrwl/workspace/src/utilities/run-tasks-in-serial';
+  updateJson,
+  writeJson,
+} from '@nx/devkit';
 import {
-  findExistingTargets,
-  addOrChangeBuildTarget,
-  addOrChangeServeTarget,
-  editTsConfig,
-  moveAndEditIndexHtml,
-  writeViteConfig,
+  getUpdatedPackageJsonContent,
+  initGenerator as jsInitGenerator,
+} from '@nx/js';
+import { getImportPath } from '@nx/js/src/utils/get-import-path';
+import {
+  getProjectType,
+  isUsingTsSolutionSetup,
+} from '@nx/js/src/utils/typescript/ts-solution-setup';
+import { join } from 'node:path/posix';
+import type { PackageJson } from 'nx/src/utils/package-json';
+import { ensureDependencies } from '../../utils/ensure-dependencies';
+import {
+  addBuildTarget,
+  addPreviewTarget,
+  addServeTarget,
+  createOrEditViteConfig,
+  TargetFlags,
 } from '../../utils/generator-utils';
-
 import initGenerator from '../init/init';
 import vitestGenerator from '../vitest/vitest-generator';
-import { Schema } from './schema';
+import { convertNonVite } from './lib/convert-non-vite';
+import { ViteConfigurationGeneratorSchema } from './schema';
 
-export async function viteConfigurationGenerator(tree: Tree, schema: Schema) {
+export function viteConfigurationGenerator(
+  host: Tree,
+  schema: ViteConfigurationGeneratorSchema
+) {
+  return viteConfigurationGeneratorInternal(host, {
+    addPlugin: false,
+    ...schema,
+  });
+}
+
+export async function viteConfigurationGeneratorInternal(
+  tree: Tree,
+  schema: ViteConfigurationGeneratorSchema
+) {
   const tasks: GeneratorCallback[] = [];
 
-  const { targets, projectType } = readProjectConfiguration(
+  const projectConfig = readProjectConfiguration(tree, schema.project);
+  const { targets, root: projectRoot } = projectConfig;
+
+  const projectType = getProjectType(
     tree,
-    schema.project
+    projectConfig.root,
+    schema.projectType ?? projectConfig.projectType
   );
-  let buildTarget = 'build';
-  let serveTarget = 'serve';
 
   schema.includeLib ??= projectType === 'library';
 
+  // Setting default to jsdom since it is the most common use case (React, Web).
+  // The @nx/js:lib generator specifically sets this to node to be more generic.
+  schema.testEnvironment ??= 'jsdom';
+
+  /**
+   * This is for when we are converting an existing project
+   * to use the vite executors.
+   */
+  let projectAlreadyHasViteTargets: TargetFlags = {};
+
   if (!schema.newProject) {
-    buildTarget = findExistingTargets(targets).buildTarget;
-    serveTarget = findExistingTargets(targets).serveTarget;
-    if (projectType === 'application') {
-      moveAndEditIndexHtml(tree, schema, buildTarget);
-    }
-    editTsConfig(tree, schema);
+    await convertNonVite(tree, schema, projectRoot, projectType, targets);
   }
 
-  const initTask = await initGenerator(tree, {
-    uiFramework: schema.uiFramework,
-    includeLib: schema.includeLib,
+  const jsInitTask = await jsInitGenerator(tree, {
+    ...schema,
+    skipFormat: true,
+    tsConfigName: projectRoot === '.' ? 'tsconfig.json' : 'tsconfig.base.json',
   });
+  tasks.push(jsInitTask);
+  const initTask = await initGenerator(tree, { ...schema, skipFormat: true });
   tasks.push(initTask);
+  tasks.push(ensureDependencies(tree, schema));
 
-  addOrChangeBuildTarget(tree, schema, buildTarget);
+  const nxJson = readNxJson(tree);
+  const addPluginDefault =
+    process.env.NX_ADD_PLUGINS !== 'false' &&
+    nxJson.useInferencePlugins !== false;
+  schema.addPlugin ??= addPluginDefault;
 
-  if (!schema.includeLib) {
-    addOrChangeServeTarget(tree, schema, serveTarget);
+  const hasPlugin = nxJson.plugins?.some((p) =>
+    typeof p === 'string'
+      ? p === '@nx/vite/plugin'
+      : p.plugin === '@nx/vite/plugin'
+  );
+
+  if (!hasPlugin) {
+    if (!projectAlreadyHasViteTargets.build) {
+      addBuildTarget(tree, schema, 'build');
+    }
+
+    if (!schema.includeLib) {
+      if (!projectAlreadyHasViteTargets.serve) {
+        addServeTarget(tree, schema, 'serve');
+      }
+      if (!projectAlreadyHasViteTargets.preview) {
+        addPreviewTarget(tree, schema, 'preview');
+      }
+    }
+  }
+  if (projectType === 'library') {
+    // update tsconfig.lib.json to include vite/client
+    updateJson(
+      tree,
+      joinPathFragments(projectRoot, 'tsconfig.lib.json'),
+      (json) => {
+        json.compilerOptions ??= {};
+        json.compilerOptions.types ??= [];
+        if (!json.compilerOptions.types.includes('vite/client')) {
+          json.compilerOptions.types.push('vite/client');
+        }
+        return json;
+      }
+    );
   }
 
-  writeViteConfig(tree, schema);
+  if (!schema.newProject) {
+    // We are converting existing project to use Vite
+    if (schema.uiFramework === 'react') {
+      createOrEditViteConfig(
+        tree,
+        {
+          project: schema.project,
+          includeLib: schema.includeLib,
+          includeVitest: schema.includeVitest,
+          inSourceTests: schema.inSourceTests,
+          rollupOptionsExternal: [
+            "'react'",
+            "'react-dom'",
+            "'react/jsx-runtime'",
+          ],
+          imports: [
+            schema.compiler === 'swc'
+              ? `import react from '@vitejs/plugin-react-swc'`
+              : `import react from '@vitejs/plugin-react'`,
+          ],
+          plugins: ['react()'],
+        },
+        false,
+        undefined
+      );
+    } else {
+      createOrEditViteConfig(tree, schema, false, projectAlreadyHasViteTargets);
+    }
+  }
 
   if (schema.includeVitest) {
     const vitestTask = await vitestGenerator(tree, {
       project: schema.project,
       uiFramework: schema.uiFramework,
       inSourceTests: schema.inSourceTests,
-      coverageProvider: 'c8',
+      coverageProvider: 'v8',
       skipViteConfig: true,
+      testTarget: 'test',
+      skipFormat: true,
+      addPlugin: schema.addPlugin,
+      compiler: schema.compiler,
+      projectType,
     });
     tasks.push(vitestTask);
   }
 
-  await formatFiles(tree);
+  if (isUsingTsSolutionSetup(tree)) {
+    updatePackageJson(tree, schema, projectType);
+  }
+
+  if (!schema.skipFormat) {
+    await formatFiles(tree);
+  }
 
   return runTasksInSerial(...tasks);
 }
 
 export default viteConfigurationGenerator;
-export const configurationSchematic = convertNxGenerator(
-  viteConfigurationGenerator
-);
+
+function updatePackageJson(
+  tree: Tree,
+  options: ViteConfigurationGeneratorSchema,
+  projectType: 'application' | 'library'
+) {
+  const project = readProjectConfiguration(tree, options.project);
+
+  const packageJsonPath = join(project.root, 'package.json');
+  let packageJson: PackageJson;
+  if (tree.exists(packageJsonPath)) {
+    packageJson = readJson(tree, packageJsonPath);
+  } else {
+    packageJson = {
+      name: getImportPath(tree, options.project),
+      version: '0.0.1',
+    };
+    if (getProjectType(tree, project.root, projectType) === 'application') {
+      packageJson.private = true;
+    }
+  }
+
+  if (projectType === 'library') {
+    // we always write/override the vite and project config with some set values,
+    // so we can rely on them
+    const main = join(project.root, 'src/index.ts');
+    // we configure the dts plugin with the entryRoot set to `src`
+    const rootDir = join(project.root, 'src');
+    const outputPath = joinPathFragments(project.root, 'dist');
+
+    packageJson = getUpdatedPackageJsonContent(packageJson, {
+      main,
+      outputPath,
+      projectRoot: project.root,
+      rootDir,
+      generateExportsField: true,
+      packageJsonPath,
+      format: ['esm'],
+    });
+  }
+
+  writeJson(tree, packageJsonPath, packageJson);
+}

@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "title": "Create Detox Configuration for the workspace",
   "description": "Create Detox Configuration for the workspace.",
   "type": "object",
@@ -12,14 +12,18 @@
       },
       "x-prompt": "What is the name of the frontend project to test?"
     },
-    "e2eName": {
+    "e2eDirectory": {
       "type": "string",
-      "description": "Name of the E2E Project.",
+      "description": "A directory where the project is placed relative current working directory (CWD).",
       "$default": {
         "$source": "argv",
         "index": 0
       },
-      "x-prompt": "What name would you like to use for the E2E project?"
+      "x-prompt": "Which directory do you want to create the E2E project in?"
+    },
+    "e2eName": {
+      "type": "string",
+      "description": "Name of the E2E Project."
     },
     "appName": {
       "type": "string",
@@ -35,10 +39,6 @@
       "enum": ["react-native", "expo"],
       "x-prompt": "What app framework should detox test?"
     },
-    "e2eDirectory": {
-      "type": "string",
-      "description": "A directory where the project is placed relative to apps directory."
-    },
     "linter": {
       "description": "The tool to use for running lint checks.",
       "type": "string",
@@ -53,7 +53,8 @@
     "skipFormat": {
       "description": "Skip formatting files.",
       "type": "boolean",
-      "default": false
+      "default": false,
+      "x-priority": "internal"
     },
     "setParserOptionsProject": {
       "type": "boolean",
@@ -61,5 +62,5 @@
       "default": false
     }
   },
-  "required": ["e2eName", "appProject", "framework"]
+  "required": ["e2eDirectory", "appProject", "framework"]
 }

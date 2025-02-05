@@ -1,30 +1,34 @@
-import { ProjectConfiguration } from 'nx/src/config/workspace-json-project-json';
-import { BuilderContext } from '@angular-devkit/architect';
 import { join } from 'path';
 import { existsSync, readFileSync } from 'fs';
-import { Remotes } from '@nrwl/devkit';
+import { logger, ProjectConfiguration } from '@nx/devkit';
+import { registerTsProject } from '@nx/js/src/internal';
+
+export type DevRemoteDefinition =
+  | string
+  | { remoteName: string; configuration: string };
 
 export function getDynamicRemotes(
   project: ProjectConfiguration,
-  context: BuilderContext,
+  context: import('@angular-devkit/architect').BuilderContext,
   workspaceProjects: Record<string, ProjectConfiguration>,
-  remotesToSkip: Set<string>
+  remotesToSkip: Set<string>,
+  pathToManifestFile: string | undefined
 ): string[] {
+  pathToManifestFile ??= getDynamicMfManifestFile(
+    project,
+    context.workspaceRoot
+  );
+
   // check for dynamic remotes
   // we should only check for dynamic based on what we generate
   // and fallback to empty array
 
-  const standardPathToGeneratedMFManifestJson = join(
-    context.workspaceRoot,
-    project.sourceRoot,
-    'assets/module-federation.manifest.json'
-  );
-  if (!existsSync(standardPathToGeneratedMFManifestJson)) {
+  if (!pathToManifestFile || !existsSync(pathToManifestFile)) {
     return [];
   }
 
   const moduleFederationManifestJson = readFileSync(
-    standardPathToGeneratedMFManifestJson,
+    pathToManifestFile,
     'utf-8'
   );
 
@@ -46,63 +50,109 @@ export function getDynamicRemotes(
     return [];
   }
 
-  const dynamicRemotes = Object.entries(parsedManifest)
+  const allDynamicRemotes = Object.entries(parsedManifest)
     .map(([remoteName]) => remoteName)
     .filter((r) => !remotesToSkip.has(r));
-  const invalidDynamicRemotes = dynamicRemotes.filter(
-    (remote) => !workspaceProjects[remote]
-  );
-  if (invalidDynamicRemotes.length) {
-    throw new Error(
-      invalidDynamicRemotes.length === 1
-        ? `Invalid dynamic remote configured in "${standardPathToGeneratedMFManifestJson}": ${invalidDynamicRemotes[0]}.`
-        : `Invalid dynamic remotes configured in "${standardPathToGeneratedMFManifestJson}": ${invalidDynamicRemotes.join(
-            ', '
-          )}.`
+
+  const remotesNotInWorkspace: string[] = [];
+
+  const dynamicRemotes = allDynamicRemotes.filter((remote) => {
+    if (!workspaceProjects[remote]) {
+      remotesNotInWorkspace.push(remote);
+
+      return false;
+    }
+    return true;
+  });
+
+  if (remotesNotInWorkspace.length > 0) {
+    logger.warn(
+      `Skipping serving ${remotesNotInWorkspace.join(
+        ', '
+      )} as they could not be found in the workspace. Ensure they are served correctly.`
     );
   }
 
   return dynamicRemotes;
 }
 
-export function getStaticRemotes(
-  project: ProjectConfiguration,
-  context: BuilderContext,
-  workspaceProjects: Record<string, ProjectConfiguration>,
-  remotesToSkip: Set<string>
-): string[] {
-  const mfConfigPath = join(
-    context.workspaceRoot,
-    project.root,
+function getModuleFederationConfig(
+  tsconfigPath: string,
+  workspaceRoot: string,
+  projectRoot: string
+) {
+  const moduleFederationConfigPathJS = join(
+    workspaceRoot,
+    projectRoot,
     'module-federation.config.js'
   );
 
-  let mfeConfig: { remotes: Remotes };
-  try {
-    mfeConfig = require(mfConfigPath);
-  } catch {
-    throw new Error(
-      `Could not load ${mfConfigPath}. Was this project generated with "@nrwl/angular:host"?`
-    );
+  const moduleFederationConfigPathTS = join(
+    workspaceRoot,
+    projectRoot,
+    'module-federation.config.ts'
+  );
+
+  let moduleFederationConfigPath = moduleFederationConfigPathJS;
+
+  let cleanupTranspiler = () => {};
+  if (existsSync(moduleFederationConfigPathTS)) {
+    cleanupTranspiler = registerTsProject(join(workspaceRoot, tsconfigPath));
+    moduleFederationConfigPath = moduleFederationConfigPathTS;
   }
 
-  const remotesConfig = mfeConfig.remotes.length > 0 ? mfeConfig.remotes : [];
-  const staticRemotes = remotesConfig
+  try {
+    const config = require(moduleFederationConfigPath);
+    cleanupTranspiler();
+
+    return {
+      mfeConfig: config.default || config,
+      mfConfigPath: moduleFederationConfigPath,
+    };
+  } catch {
+    throw new Error(
+      `Could not load ${moduleFederationConfigPath}. Was this project generated with "@nx/angular:host"?`
+    );
+  }
+}
+
+export function getStaticRemotes(
+  project: ProjectConfiguration,
+  context: import('@angular-devkit/architect').BuilderContext,
+  workspaceProjects: Record<string, ProjectConfiguration>,
+  remotesToSkip: Set<string>
+): string[] {
+  const { mfeConfig, mfConfigPath } = getModuleFederationConfig(
+    project.targets.build.options.tsConfig,
+    context.workspaceRoot,
+    project.root
+  );
+
+  const remotesConfig =
+    Array.isArray(mfeConfig.remotes) && mfeConfig.remotes.length > 0
+      ? mfeConfig.remotes
+      : [];
+  const allStaticRemotes = remotesConfig
     .map((remoteDefinition) =>
       Array.isArray(remoteDefinition) ? remoteDefinition[0] : remoteDefinition
     )
     .filter((r) => !remotesToSkip.has(r));
+  const remotesNotInWorkspace: string[] = [];
 
-  const invalidStaticRemotes = staticRemotes.filter(
-    (remote) => !workspaceProjects[remote]
-  );
-  if (invalidStaticRemotes.length) {
-    throw new Error(
-      invalidStaticRemotes.length === 1
-        ? `Invalid static remote configured in "${mfConfigPath}": ${invalidStaticRemotes[0]}.`
-        : `Invalid static remotes configured in "${mfConfigPath}": ${invalidStaticRemotes.join(
-            ', '
-          )}.`
+  const staticRemotes = allStaticRemotes.filter((remote) => {
+    if (!workspaceProjects[remote]) {
+      remotesNotInWorkspace.push(remote);
+
+      return false;
+    }
+    return true;
+  });
+
+  if (remotesNotInWorkspace.length > 0) {
+    logger.warn(
+      `Skipping serving ${remotesNotInWorkspace.join(
+        ', '
+      )} as they could not be found in the workspace. Ensure they are served correctly.`
     );
   }
 
@@ -110,12 +160,18 @@ export function getStaticRemotes(
 }
 
 export function validateDevRemotes(
-  options: { devRemotes?: string[] },
+  options: {
+    devRemotes: DevRemoteDefinition[];
+  },
   workspaceProjects: Record<string, ProjectConfiguration>
 ): void {
-  const invalidDevRemotes = options.devRemotes?.filter(
-    (remote) => !workspaceProjects[remote]
-  );
+  const invalidDevRemotes =
+    options.devRemotes.filter(
+      (remote) =>
+        !(typeof remote === 'string'
+          ? workspaceProjects[remote]
+          : workspaceProjects[remote.remoteName])
+    ) ?? [];
 
   if (invalidDevRemotes.length) {
     throw new Error(
@@ -124,4 +180,24 @@ export function validateDevRemotes(
         : `Invalid dev remotes provided: ${invalidDevRemotes.join(', ')}.`
     );
   }
+}
+
+export function getDynamicMfManifestFile(
+  project: ProjectConfiguration,
+  workspaceRoot: string
+): string | undefined {
+  // {sourceRoot}/assets/module-federation.manifest.json was the generated
+  // path for the manifest file in the past. We now generate the manifest
+  // file at {root}/public/module-federation.manifest.json. This check
+  // ensures that we can still support the old path for backwards
+  // compatibility since old projects may still have the manifest file
+  // at the old path.
+  return [
+    join(workspaceRoot, project.root, 'public/module-federation.manifest.json'),
+    join(
+      workspaceRoot,
+      project.sourceRoot,
+      'assets/module-federation.manifest.json'
+    ),
+  ].find((path) => existsSync(path));
 }

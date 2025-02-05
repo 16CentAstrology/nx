@@ -1,58 +1,44 @@
-import { ExecutorContext } from '@nrwl/devkit';
-import { File, Reporter } from 'vitest';
+import { ExecutorContext, workspaceRoot } from '@nx/devkit';
 import { VitestExecutorOptions } from './schema';
+import { resolve } from 'path';
+import { registerTsConfigPaths } from '@nx/js/src/internal';
+import { NxReporter } from './lib/nx-reporter';
+import { getOptions } from './lib/utils';
+import { loadVitestDynamicImport } from '../../utils/executor-utils';
 
-class NxReporter implements Reporter {
-  deferred: {
-    promise: Promise<boolean>;
-    resolve: (val: boolean) => void;
-  };
-
-  constructor(private watch: boolean) {
-    this.setupDeferred();
-  }
-
-  async *[Symbol.asyncIterator]() {
-    do {
-      const hasErrors = await this.deferred.promise;
-      yield { hasErrors };
-      this.setupDeferred();
-    } while (this.watch);
-  }
-
-  private setupDeferred() {
-    let resolve: (val: boolean) => void;
-    this.deferred = {
-      promise: new Promise((res) => {
-        resolve = res;
-      }),
-      resolve,
-    };
-  }
-
-  onFinished(files: File[], errors?: unknown[]) {
-    const hasErrors =
-      files.some((f) => f.result?.state === 'fail') || errors?.length > 0;
-    this.deferred.resolve(hasErrors);
-  }
-}
-
-export default async function* runExecutor(
+export async function* vitestExecutor(
   options: VitestExecutorOptions,
   context: ExecutorContext
 ) {
-  const { startVitest } = await (Function(
-    'return import("vitest/node")'
-  )() as Promise<typeof import('vitest/node')>);
+  const projectRoot =
+    context.projectsConfigurations.projects[context.projectName].root;
 
-  const projectRoot = context.projectGraph.nodes[context.projectName].data.root;
+  registerTsConfigPaths(resolve(workspaceRoot, projectRoot, 'tsconfig.json'));
 
-  const nxReporter = new NxReporter(options.watch);
-  const ctx = await startVitest(options.mode, [], {
-    ...options,
-    root: projectRoot,
-    reporters: [...(options.reporters ?? []), 'default', nxReporter],
-  });
+  process.env.VITE_CJS_IGNORE_WARNING = 'true';
+  // Allows ESM to be required in CJS modules. Vite will be published as ESM in the future.
+  const { startVitest } = await loadVitestDynamicImport();
+
+  const resolvedOptions =
+    (await getOptions(options, context, projectRoot)) ?? {};
+
+  const watch = resolvedOptions['watch'] === true;
+
+  const nxReporter = new NxReporter(watch);
+  if (resolvedOptions['reporters'] === undefined) {
+    resolvedOptions['reporters'] = [];
+  } else if (typeof resolvedOptions['reporters'] === 'string') {
+    resolvedOptions['reporters'] = [resolvedOptions['reporters']];
+  }
+  resolvedOptions['reporters'].push(nxReporter);
+
+  const cliFilters = options.testFiles ?? [];
+
+  const ctx = await startVitest(
+    resolvedOptions['mode'] ?? 'test',
+    cliFilters,
+    resolvedOptions
+  );
 
   let hasErrors = false;
 
@@ -65,17 +51,29 @@ export default async function* runExecutor(
     }
   };
 
-  if (options.watch) {
+  if (watch) {
     process.on('SIGINT', processExit);
     process.on('SIGTERM', processExit);
     process.on('exit', processExit);
   }
 
-  for await (const report of nxReporter) {
-    hasErrors = report.hasErrors;
+  // vitest sets the exitCode in case of exception without notifying reporters
+  if (
+    process.exitCode === undefined ||
+    (watch && ctx.state.getFiles().length > 0)
+  ) {
+    for await (const report of nxReporter) {
+      // vitest sets the exitCode = 1 when code coverage isn't met
+      hasErrors =
+        report.hasErrors || (process.exitCode && process.exitCode !== 0);
+    }
+  } else {
+    hasErrors = process.exitCode !== 0;
   }
 
   return {
     success: !hasErrors,
   };
 }
+
+export default vitestExecutor;

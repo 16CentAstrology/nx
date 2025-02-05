@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { names } from '@nrwl/devkit';
+import { names } from '@nx/devkit';
 
 const JS_SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
@@ -17,17 +17,12 @@ module.exports = {
       module.exports = {
         __esModule: true,
         default: ${assetFilename},
-        ReactComponent: React.forwardRef(function ${componentName}(props, ref) {
-          return {
-            $$typeof: Symbol.for('react.element'),
-            type: 'svg',
-            ref: ref,
-            key: null,
-            props: Object.assign({}, props, {
-              children: ${assetFilename}
-            })
-          };
-        }),
+        ReactComponent: function ${componentName}(props) {
+          return React.createElement(
+            'svg',
+            Object.assign({}, props, { children: ${assetFilename} })
+          );
+        },
       };`,
       };
     }

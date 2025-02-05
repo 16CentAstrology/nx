@@ -4,7 +4,7 @@
 {% tab label="Create a new lib" %}
 
 ```shell
-nx g lib my-lib
+nx g lib libs/my-lib
 ```
 
 {% /tab %}
@@ -13,7 +13,7 @@ nx g lib my-lib
 The following will create a library at `libs/shared/my-lib`.
 
 ```shell
-nx g lib my-lib --directory=shared
+nx g lib libs/shared/my-lib
 ```
 
 {% /tab %}

@@ -6,5 +6,13 @@ export interface Schema {
   serverPort?: number;
   rootModuleFileName?: string;
   rootModuleClassName?: string;
+  standalone?: boolean;
+  hydration?: boolean;
+  serverRouting?: boolean;
   skipFormat?: boolean;
+  skipPackageJson?: boolean;
+}
+
+export interface NormalizedGeneratorOptions extends Schema {
+  isUsingApplicationBuilder: boolean;
 }

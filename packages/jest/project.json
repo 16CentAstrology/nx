@@ -4,21 +4,9 @@
   "sourceRoot": "packages/jest",
   "projectType": "library",
   "targets": {
-    "test": {
-      "executor": "@nrwl/jest:jest",
-      "options": {
-        "jestConfig": "packages/jest/jest.config.ts",
-        "passWithNoTests": true
-      },
-      "outputs": ["{workspaceRoot}/coverage/packages/jest"]
-    },
     "build-base": {
-      "executor": "@nrwl/js:tsc",
+      "executor": "@nx/js:tsc",
       "options": {
-        "outputPath": "build/packages/jest",
-        "tsConfig": "packages/jest/tsconfig.lib.json",
-        "main": "packages/jest/index.ts",
-        "updateBuildableProjectDepsInPackageJson": false,
         "assets": [
           {
             "input": "packages/jest",
@@ -53,8 +41,7 @@
             "output": "/"
           }
         ]
-      },
-      "outputs": ["{options.outputPath}"]
+      }
     },
     "build": {
       "executor": "nx:run-commands",
@@ -62,26 +49,6 @@
       "options": {
         "command": "node ./scripts/copy-readme.js jest"
       }
-    },
-    "lint": {
-      "executor": "@nrwl/linter:eslint",
-      "options": {
-        "lintFilePatterns": [
-          "packages/jest/**/*.ts",
-          "packages/jest/**/*.spec.ts",
-          "packages/jest/**/*.spec.tsx",
-          "packages/jest/**/*.spec.js",
-          "packages/jest/**/*.spec.jsx",
-          "packages/jest/**/*.d.ts",
-          "packages/jest/**/executors/**/schema.json",
-          "packages/jest/**/generators/**/schema.json",
-          "packages/jest/generators.json",
-          "packages/jest/executors.json",
-          "packages/jest/package.json",
-          "packages/jest/migrations.json"
-        ]
-      },
-      "outputs": ["{options.outputFile}"]
     }
   }
 }

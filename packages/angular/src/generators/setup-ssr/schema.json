@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "$id": "GeneratorAngularUniversalSetup",
   "cli": "nx",
   "title": "Generate Angular Universal (SSR) setup for an Angular App",
@@ -15,12 +15,6 @@
       },
       "x-prompt": "What app would you like to generate an Angular Universal configuration for?",
       "x-dropdown": "projects"
-    },
-    "appId": {
-      "type": "string",
-      "format": "html-selector",
-      "description": "The `appId` to use with `withServerTransition`.",
-      "default": "serverApp"
     },
     "main": {
       "type": "string",
@@ -49,9 +43,29 @@
       "description": "The name of the root module class.",
       "default": "AppServerModule"
     },
+    "standalone": {
+      "type": "boolean",
+      "description": "Use Standalone Components to bootstrap SSR."
+    },
+    "hydration": {
+      "type": "boolean",
+      "description": "Set up Hydration for the SSR application.",
+      "default": true
+    },
+    "serverRouting": {
+      "description": "Creates a server application using the Server Routing and App Engine APIs (Developer Preview). _Note: this is only supported in Angular versions >= 19.0.0_.",
+      "type": "boolean"
+    },
     "skipFormat": {
       "type": "boolean",
-      "description": "Skip formatting the workspace after the generator completes."
+      "description": "Skip formatting the workspace after the generator completes.",
+      "x-priority": "internal"
+    },
+    "skipPackageJson": {
+      "type": "boolean",
+      "default": false,
+      "description": "Do not add dependencies to `package.json`.",
+      "x-priority": "internal"
     }
   },
   "required": ["project"],

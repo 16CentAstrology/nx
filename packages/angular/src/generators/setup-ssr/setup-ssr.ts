@@ -1,35 +1,50 @@
-import type { Tree } from '@nrwl/devkit';
+import type { Tree } from '@nx/devkit';
 import {
-  addDependenciesToPackageJson,
   formatFiles,
   installPackagesTask,
-} from '@nrwl/devkit';
-import type { Schema } from './schema';
+  readProjectConfiguration,
+} from '@nx/devkit';
 import {
+  addDependencies,
+  addHydration,
+  addServerFile,
   generateSSRFiles,
+  generateTsConfigServerJsonForBrowserBuilder,
   normalizeOptions,
-  updateAppModule,
-  updateProjectConfig,
+  setRouterInitialNavigation,
+  setServerTsConfigOptionsForApplicationBuilder,
+  updateProjectConfigForApplicationBuilder,
+  updateProjectConfigForBrowserBuilder,
+  validateOptions,
 } from './lib';
-import { angularVersion, ngUniversalVersion } from '../../utils/versions';
+import type { Schema } from './schema';
 
 export async function setupSsr(tree: Tree, schema: Schema) {
-  const options = normalizeOptions(tree, schema);
+  validateOptions(tree, schema);
+  const options = await normalizeOptions(tree, schema);
 
+  if (!schema.skipPackageJson) {
+    addDependencies(tree, options.isUsingApplicationBuilder);
+  }
   generateSSRFiles(tree, options);
-  updateAppModule(tree, options);
-  updateProjectConfig(tree, options);
 
-  addDependenciesToPackageJson(
-    tree,
-    {
-      '@nguniversal/express-engine': ngUniversalVersion,
-      '@angular/platform-server': angularVersion,
-    },
-    {
-      '@nguniversal/builders': ngUniversalVersion,
-    }
-  );
+  if (options.hydration) {
+    addHydration(tree, options);
+  }
+
+  if (!options.hydration) {
+    setRouterInitialNavigation(tree, options);
+  }
+
+  if (options.isUsingApplicationBuilder) {
+    updateProjectConfigForApplicationBuilder(tree, options);
+    setServerTsConfigOptionsForApplicationBuilder(tree, options);
+  } else {
+    updateProjectConfigForBrowserBuilder(tree, options);
+    generateTsConfigServerJsonForBrowserBuilder(tree, options);
+  }
+
+  addServerFile(tree, options);
 
   if (!options.skipFormat) {
     await formatFiles(tree);

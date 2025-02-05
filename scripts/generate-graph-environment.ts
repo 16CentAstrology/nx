@@ -33,6 +33,8 @@ function writeFile() {
         label: id,
         projectGraphUrl: join('assets/generated-project-graphs/', filename),
         taskGraphUrl: join('assets/generated-task-graphs/', filename),
+        taskInputsUrl: join('assets/generated-task-inputs/', filename),
+        sourceMapsUrl: join('assets/generated-source-maps/', filename),
       };
     });
   } catch {
@@ -50,6 +52,8 @@ function writeFile() {
         label: id,
         projectGraphUrl: join('assets/project-graphs/', filename),
         taskGraphUrl: join('assets/task-graphs/', filename),
+        taskInputsUrl: join('assets/task-inputs/', filename),
+        sourceMapsUrl: join('assets/source-maps/', filename),
       };
     });
   } catch {
@@ -58,7 +62,9 @@ function writeFile() {
 
   // if no generated projects are found, generate one for nx and try this again
   if (generatedGraphs.length === 0) {
-    execSync('nx run graph-client:generate-graph --directory ./ --name nx');
+    execSync('nx run graph-client:generate-graph --directory ./ --name nx', {
+      windowsHide: false,
+    });
     writeFile();
     return;
   }

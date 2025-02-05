@@ -1,11 +1,17 @@
-import { readJsonFile, writeJsonFile } from '@nrwl/devkit';
+import { readJsonFile, writeJsonFile } from '@nx/devkit';
 import type { InlineProjectGraph } from '../inline';
 
 export function generateTmpSwcrc(
   inlineProjectGraph: InlineProjectGraph,
-  swcrcPath: string
+  swcrcPath: string,
+  tmpSwcrcPath: string
 ) {
   const swcrc = readJsonFile(swcrcPath);
+  swcrc['exclude'] ??= [];
+
+  if (!Array.isArray(swcrc['exclude'])) {
+    swcrc['exclude'] = [swcrc['exclude']];
+  }
 
   swcrc['exclude'] = swcrc['exclude'].concat(
     Object.values(inlineProjectGraph.externals).map(
@@ -14,7 +20,6 @@ export function generateTmpSwcrc(
     'node_modules/**/*.ts$'
   );
 
-  const tmpSwcrcPath = `tmp${swcrcPath}`;
   writeJsonFile(tmpSwcrcPath, swcrc);
 
   return tmpSwcrcPath;

@@ -3,7 +3,7 @@
   "outputCapture": "direct-nodejs",
   "cli": "nx",
   "$id": "NxExpoStart",
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "title": "Packager Server for Expo",
   "description": "Packager Server target options.",
   "type": "object",
@@ -87,17 +87,7 @@
     "offline": {
       "type": "boolean",
       "description": "Allows this command to run while offline"
-    },
-    "sentTo": {
-      "type": "string",
-      "description": "An email address to send a link to",
-      "alias": "s",
-      "x-deprecated": true
-    },
-    "webpack": {
-      "type": "boolean",
-      "description": "Start a Webpack dev server for the web app.",
-      "x-deprecated": true
     }
-  }
+  },
+  "examplesFile": "../../../docs/start-examples.md"
 }

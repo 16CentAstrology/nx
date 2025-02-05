@@ -1,4 +1,3 @@
-import { DocumentData } from '@nrwl/nx-dev/models-document';
 import { join } from 'path';
 import { uriTransformer } from './uri-transformer';
 
@@ -8,7 +7,7 @@ export function transformImagePath(
   return (src) => {
     const isRelative = src.startsWith('.');
 
-    if (!/\.(gif|jpe?g|tiff?|png|webp|bmp|svg)$/i.test(src)) {
+    if (!/\.(gif|jpe?g|tiff?|png|webp|bmp|svg|avif)$/i.test(src)) {
       return uriTransformer(src);
     }
 

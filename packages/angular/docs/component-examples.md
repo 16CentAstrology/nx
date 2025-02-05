@@ -3,20 +3,30 @@
 {% tabs %}
 {% tab label="Simple Component" %}
 
-Create a component named `my-component`:
+Generate a component named `MyComponent` at `apps/my-app/src/lib/my-component/my-component.component.ts`:
 
 ```bash
-nx g @nrwl/angular:component my-component
+nx g @nx/angular:component apps/my-app/src/lib/my-component/my-component.ts
 ```
 
 {% /tab %}
 
-{% tab label="Standalone Component" %}
+{% tab label="Without Providing the File Extension" %}
 
-Create a standalone component named `my-component`:
+Generate a component named `MyComponent` at `apps/my-app/src/lib/my-component/my-component.component.ts`:
 
 ```bash
-nx g @nrwl/angular:component my-component --standalone
+nx g @nx/angular:component apps/my-app/src/lib/my-component/my-component
+```
+
+{% /tab %}
+
+{% tab label="With Different Symbol Name" %}
+
+Generate a component named `CustomComponent` at `apps/my-app/src/lib/my-component/my-component.component.ts`:
+
+```bash
+nx g @nx/angular:component apps/my-app/src/lib/my-component/my-component --name=custom
 ```
 
 {% /tab %}
@@ -26,7 +36,7 @@ nx g @nrwl/angular:component my-component --standalone
 Create a component named `my-component` with inline styles and inline template:
 
 ```bash
-nx g @nrwl/angular:component my-component --inlineStyle --inlineTemplate
+nx g @nx/angular:component apps/my-app/src/lib/my-component/my-component --inlineStyle --inlineTemplate
 ```
 
 {% /tab %}
@@ -36,7 +46,7 @@ nx g @nrwl/angular:component my-component --inlineStyle --inlineTemplate
 Create a component named `my-component` with OnPush Change Detection Strategy:
 
 ```bash
-nx g @nrwl/angular:component my-component --changeDetection=OnPush
+nx g @nx/angular:component apps/my-app/src/lib/my-component/my-component --changeDetection=OnPush
 ```
 
 {% /tab %}

@@ -3,7 +3,7 @@
   "outputCapture": "direct-nodejs",
   "title": "Vite Prod Builder",
   "cli": "nx",
-  "description": "Build using Vite.",
+  "description": "Builds a Vite.js application for production.",
   "type": "object",
   "presets": [
     {
@@ -15,12 +15,24 @@
     "outputPath": {
       "type": "string",
       "description": "The output path of the generated files.",
-      "x-completion-type": "directory"
+      "x-completion-type": "directory",
+      "x-priority": "important"
     },
-    "base": {
+    "buildLibsFromSource": {
+      "type": "boolean",
+      "description": "Read buildable libraries from source instead of building them separately.",
+      "default": true
+    },
+    "skipTypeCheck": {
+      "type": "boolean",
+      "description": "Skip type-checking via TypeScript. Skipping type-checking speeds up the build but type errors are not caught.",
+      "default": false
+    },
+    "tsConfig": {
       "type": "string",
-      "description": "Base public path when served in development or production.",
-      "alias": "baseHref"
+      "description": "The path to custom tsconfig file for type-checking when skipTypeCheck is false. Required when tsconfig file is not at the projectRoot level.",
+      "x-completion-type": "file",
+      "x-completion-glob": "tsconfig.*.json"
     },
     "configFile": {
       "type": "string",
@@ -28,81 +40,33 @@
       "x-completion-type": "file",
       "x-completion-glob": "vite.config.@(js|ts)"
     },
-    "fileReplacements": {
-      "description": "Replace files with other files in the build.",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "replace": {
-            "type": "string",
-            "description": "The file to be replaced.",
-            "x-completion-type": "file"
-          },
-          "with": {
-            "type": "string",
-            "description": "The file to replace with.",
-            "x-completion-type": "file"
-          }
-        },
-        "additionalProperties": false,
-        "required": ["replace", "with"]
-      },
-      "default": []
-    },
-    "sourcemap": {
-      "description": "Output sourcemaps. Use 'hidden' for use with error reporting tools without generating sourcemap comment.",
+    "watch": {
+      "description": "Enable re-building when files change.",
       "oneOf": [
         {
           "type": "boolean"
         },
         {
-          "type": "string"
+          "type": "object"
         }
-      ]
+      ],
+      "default": false
     },
-    "minify": {
-      "description": "Output sourcemaps. Use 'hidden' for use with error reporting tools without generating sourcemap comment.",
-      "oneOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "string"
-        }
-      ]
+    "generatePackageJson": {
+      "description": "Generate a package.json for the build output.",
+      "type": "boolean"
     },
-    "manifest": {
-      "description": "Output sourcemaps. Use 'hidden' for use with error reporting tools without generating sourcemap comment.",
-      "oneOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "string"
-        }
-      ]
+    "includeDevDependenciesInPackageJson": {
+      "description": "Include devDependencies in the generated package.json.",
+      "type": "boolean"
     },
-    "ssrManifest": {
-      "description": "When set to true, the build will also generate an SSR manifest for determining style links and asset preload directives in production. When the value is a string, it will be used as the manifest file name.",
-      "oneOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "string"
-        }
-      ]
+    "skipOverrides": {
+      "type": "boolean",
+      "description": "Do not add a `overrides` and `resolutions` entries to the generated package.json file. Only works in conjunction with `generatePackageJson` option."
     },
-    "logLevel": {
-      "type": "string",
-      "description": "Adjust console output verbosity.",
-      "enum": ["info", "warn", "error", "silent"]
-    },
-    "mode": {
-      "type": "string",
-      "description": "Mode to run the build in.",
-      "enum": ["production", "development"]
+    "skipPackageManager": {
+      "type": "boolean",
+      "description": "Do not add a `packageManager` entry to the generated package.json file. Only works in conjunction with `generatePackageJson` option."
     }
   },
   "definitions": {},

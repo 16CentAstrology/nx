@@ -1,14 +1,15 @@
 import {
-  formatFiles,
   joinPathFragments,
-  readWorkspaceConfiguration,
+  readNxJson,
   Tree,
-  updateWorkspaceConfiguration,
+  updateNxJson,
   writeJson,
-} from '@nrwl/devkit';
+} from '@nx/devkit';
 
-export async function addBabelInputs(tree: Tree) {
-  const workspaceConfiguration = readWorkspaceConfiguration(tree);
+/** @deprecated Do not use this function as the root babel.config.json file is no longer needed */
+// TODO(jack): Remove This in Nx 17 once we don't need to support Nx 15 anymore. Currently this function is used in v15 migrations.
+export function addBabelInputs(tree: Tree) {
+  const nxJson = readNxJson(tree);
   let globalBabelFile = ['babel.config.js', 'babel.config.json'].find((file) =>
     tree.exists(file)
   );
@@ -20,18 +21,13 @@ export async function addBabelInputs(tree: Tree) {
     globalBabelFile = 'babel.config.json';
   }
 
-  if (workspaceConfiguration.namedInputs?.sharedGlobals) {
-    const sharedGlobalFileset = new Set(
-      workspaceConfiguration.namedInputs.sharedGlobals
-    );
+  if (nxJson.namedInputs?.sharedGlobals) {
+    const sharedGlobalFileset = new Set(nxJson.namedInputs.sharedGlobals);
     sharedGlobalFileset.add(
       joinPathFragments('{workspaceRoot}', globalBabelFile)
     );
-    workspaceConfiguration.namedInputs.sharedGlobals =
-      Array.from(sharedGlobalFileset);
+    nxJson.namedInputs.sharedGlobals = Array.from(sharedGlobalFileset);
   }
 
-  updateWorkspaceConfiguration(tree, workspaceConfiguration);
-
-  await formatFiles(tree);
+  updateNxJson(tree, nxJson);
 }

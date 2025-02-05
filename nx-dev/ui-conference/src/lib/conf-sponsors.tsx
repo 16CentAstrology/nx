@@ -1,4 +1,4 @@
-import { Sponsor, SponsorCard } from '@nrwl/nx-dev/ui-sponsor-card';
+import { Sponsor, SponsorCard } from '@nx/nx-dev/ui-sponsor-card';
 import cx from 'classnames';
 
 export function ConfSponsors(): JSX.Element {
@@ -107,7 +107,7 @@ export function ConfSponsors(): JSX.Element {
                   {row.map((speaker) => (
                     <div
                       key={speaker.name}
-                      className="border-slate-600 py-8 odd:border-b md:odd:border-r md:odd:border-b-0 md:odd:pr-12 md:even:pl-12"
+                      className="border-slate-600 py-8 odd:border-b md:odd:border-b-0 md:odd:border-r md:odd:pr-12 md:even:pl-12"
                     >
                       <div className="h-full px-5">
                         <SponsorCard

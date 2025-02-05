@@ -6,6 +6,7 @@ import {
   getImageDownloadButton,
   getIncludeProjectsInPathButton,
   getSearchDepthCheckbox,
+  getSearchDepthDecrementButton,
   getSearchDepthIncrementButton,
   getSelectAffectedButton,
   getSelectAllButton,
@@ -35,7 +36,7 @@ describe('dev mode - project graph', () => {
   afterEach(() => {
     // clean up by hiding all projects and clearing text input
     getDeselectAllButton().click();
-    getTextFilterInput().clear();
+    getTextFilterInput().clear().type('{enter}');
     getCheckedProjectItems().should('have.length', 0);
   });
 
@@ -45,7 +46,9 @@ describe('dev mode - project graph', () => {
     });
 
     it('should hide when a project is selected', () => {
-      cy.contains('cart').scrollIntoView().should('be.visible');
+      cy.contains('cart').as('cart');
+      cy.get('@cart').scrollIntoView();
+      cy.get('@cart').should('be.visible');
       cy.get('[data-project="cart"]').should('be.visible');
       cy.get('[data-project="cart"]').click({ force: true });
       getSelectProjectsMessage().should('not.exist');
@@ -110,6 +113,53 @@ describe('dev mode - project graph', () => {
           project.name.includes('cart')
         ).length
       );
+    });
+  });
+
+  describe('proximity', () => {
+    it('should change when increment/decrement button is clicked', () => {
+      cy.get('[data-cy="depth-value"]').should('contain', '1');
+      getSearchDepthIncrementButton().click();
+      cy.get('[data-cy="depth-value"]').should('contain', '2');
+      getSearchDepthDecrementButton().click();
+      cy.get('[data-cy="depth-value"]').should('contain', '1');
+    });
+
+    it("should reactivate proximity if it's disabled and a button is clicked", () => {
+      getSearchDepthIncrementButton().click();
+      cy.get('[data-cy="depth-value"]').should('contain', '2');
+      getSearchDepthCheckbox()
+        .should('be.checked')
+        .click()
+        .should('not.be.checked')
+        .click();
+      getSearchDepthIncrementButton().click();
+      cy.get('[data-cy="depth-value"]').should('contain', '3');
+      getSearchDepthCheckbox()
+        .should('be.checked')
+        .click()
+        .should('not.be.checked')
+        .click();
+      getSearchDepthDecrementButton().click();
+      cy.get('[data-cy="depth-value"]').should('contain', '2');
+      getSearchDepthCheckbox()
+        .should('be.checked')
+        .click()
+        .should('not.be.checked')
+        .click();
+      // return to 1 for following tests
+      getSearchDepthDecrementButton().click();
+    });
+
+    it('should not go below 1', () => {
+      getSearchDepthIncrementButton().click();
+      getSearchDepthIncrementButton().click();
+      cy.get('[data-cy="depth-value"]').should('contain', '3');
+      getSearchDepthDecrementButton().click();
+      getSearchDepthDecrementButton().click();
+      cy.get('[data-cy="depth-value"]').should('contain', '1');
+      getSearchDepthDecrementButton().click();
+      cy.get('[data-cy="depth-value"]').should('contain', '1');
     });
   });
 
@@ -205,7 +255,9 @@ describe('dev mode - project graph', () => {
 
   describe('focusing projects in sidebar', () => {
     it('should select appropriate projects', () => {
-      cy.contains('cart').scrollIntoView().should('be.visible');
+      cy.contains('cart').as('cart');
+      cy.get('@cart').scrollIntoView();
+      cy.get('@cart').should('be.visible');
       getFocusButtonForProject('cart').click({ force: true });
 
       const dependencies = nxExamplesJson.dependencies.cart;
@@ -221,6 +273,11 @@ describe('dev mode - project graph', () => {
         ['cart', ...dependencies, ...dependents].length
       );
     });
+
+    it('should url encode projects with special chars', () => {
+      getFocusButtonForProject('@scoped/project-a').click({ force: true });
+      cy.url().should('include', '%40scoped%2Fproject-a');
+    });
   });
 
   describe('unfocus button', () => {
@@ -235,7 +292,9 @@ describe('dev mode - project graph', () => {
 
   describe('toggle all projects in folder button', () => {
     it('should check all projects in folder if at least one project checked', () => {
-      cy.contains('shared-product-state').scrollIntoView().should('be.visible');
+      cy.contains('shared-product-state').as('shared-product-state');
+      cy.get('@shared-product-state').scrollIntoView();
+      cy.get('@shared-product-state').should('be.visible');
       cy.get('[data-project="shared-product-state"]').should('be.visible');
       cy.get('[data-project="shared-product-state"]').click({ force: true });
       getToggleAllButtonForFolder('shared/product').click({ force: true });
@@ -274,7 +333,9 @@ describe('dev mode - project graph', () => {
 
   describe('setting url params', () => {
     it('should set focused project', () => {
-      cy.contains('cart').scrollIntoView().should('be.visible');
+      cy.contains('cart').as('cart');
+      cy.get('@cart').scrollIntoView();
+      cy.get('@cart').should('be.visible');
       getFocusButtonForProject('cart').click({ force: true });
       getUnfocusProjectButton().should('exist');
       cy.url().should('contain', '/projects/cart');

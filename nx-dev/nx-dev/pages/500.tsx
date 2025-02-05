@@ -1,4 +1,4 @@
-import { Footer, Header } from '@nrwl/nx-dev/ui-common';
+import { Footer, Header } from '@nx/nx-dev/ui-common';
 import { NextSeo } from 'next-seo';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -22,7 +22,7 @@ export default function FiveOhOh(): JSX.Element {
                   src="/images/illustrations/500.svg"
                   className="drop-shadow"
                 />
-                <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 sm:text-6xl lg:ml-8">
+                <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-slate-900 sm:text-6xl lg:ml-8 dark:text-slate-100">
                   <div className="sr-only">500 - </div>Internal Server Error!
                 </h1>
               </div>
@@ -44,7 +44,7 @@ export default function FiveOhOh(): JSX.Element {
                   target="_blank"
                   rel="noreferrer"
                   className="font-semibold underline"
-                  title="Create a Github issue"
+                  title="Create a GitHub issue"
                 >
                   drop us a line
                 </Link>{' '}

@@ -9,13 +9,13 @@ See an example set up of it below:
 ```json
 {
   "serve": {
-    "executor": "@nrwl/angular:module-federation-dev-server",
+    "executor": "@nx/angular:module-federation-dev-server",
     "configurations": {
       "production": {
-        "browserTarget": "host:build:production"
+        "buildTarget": "host:build:production"
       },
       "development": {
-        "browserTarget": "host:build:development"
+        "buildTarget": "host:build:development"
       }
     },
     "defaultConfiguration": "development",
@@ -36,20 +36,26 @@ See an example set up of it below:
 ```json
 {
   "serve-with-hmr-remotes": {
-    "executor": "@nrwl/angular:module-federation-dev-server",
+    "executor": "@nx/angular:module-federation-dev-server",
     "configurations": {
       "production": {
-        "browserTarget": "host:build:production"
+        "buildTarget": "host:build:production"
       },
       "development": {
-        "browserTarget": "host:build:development"
+        "buildTarget": "host:build:development"
       }
     },
     "defaultConfiguration": "development",
     "options": {
       "port": 4200,
       "publicHost": "http://localhost:4200",
-      "devRemotes": ["remote1", "remote2"]
+      "devRemotes": [
+        "remote1",
+        {
+          "remoteName": "remote2",
+          "configuration": "development"
+        }
+      ]
     }
   }
 }

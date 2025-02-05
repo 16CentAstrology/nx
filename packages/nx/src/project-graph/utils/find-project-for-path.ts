@@ -1,6 +1,7 @@
 import { dirname } from 'path';
 import { ProjectGraphProjectNode } from '../../config/project-graph';
 import { ProjectConfiguration } from '../../config/workspace-json-project-json';
+import { normalizePath } from '../../utils/path';
 
 export type ProjectRootMappings = Map<string, string>;
 
@@ -12,9 +13,8 @@ export function createProjectRootMappingsFromProjectConfigurations(
   projects: Record<string, ProjectConfiguration>
 ) {
   const projectRootMappings: ProjectRootMappings = new Map();
-  for (const projectName of Object.keys(projects)) {
-    const root = projects[projectName].root;
-    projectRootMappings.set(normalizeProjectRoot(root), projectName);
+  for (const { name, root } of Object.values(projects)) {
+    projectRootMappings.set(normalizeProjectRoot(root), name);
   }
   return projectRootMappings;
 }
@@ -44,7 +44,12 @@ export function findProjectForPath(
   filePath: string,
   projectRootMap: ProjectRootMappings
 ): string | null {
-  let currentPath = filePath;
+  /**
+   * Project Mappings are in UNIX-style file paths
+   * Windows may pass Win-style file paths
+   * Ensure filePath is in UNIX-style
+   */
+  let currentPath = normalizePath(filePath);
   for (
     ;
     currentPath != dirname(currentPath);
@@ -58,7 +63,7 @@ export function findProjectForPath(
   return projectRootMap.get(currentPath);
 }
 
-function normalizeProjectRoot(root: string) {
+export function normalizeProjectRoot(root: string) {
   root = root === '' ? '.' : root;
   return root && root.endsWith('/') ? root.substring(0, root.length - 1) : root;
 }

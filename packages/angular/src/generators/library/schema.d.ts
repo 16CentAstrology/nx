@@ -1,13 +1,13 @@
-import { UnitTestRunner } from '../../utils/test-runners';
-import { Linter } from '@nrwl/linter';
+import type { Linter, LinterType } from '@nx/eslint';
+import type { UnitTestRunner } from '../../utils/test-runners';
 
 export interface Schema {
-  name: string;
+  directory: string;
+  name?: string;
   addTailwind?: boolean;
   skipFormat?: boolean;
-  simpleModuleName?: boolean;
+  simpleName?: boolean;
   addModuleSpec?: boolean;
-  directory?: string;
   sourceDir?: string;
   buildable?: boolean;
   publishable?: boolean;
@@ -22,7 +22,7 @@ export interface Schema {
   parent?: string;
   tags?: string;
   strict?: boolean;
-  linter?: Linter;
+  linter?: Linter | LinterType;
   unitTestRunner?: UnitTestRunner;
   compilationMode?: 'full' | 'partial';
   setParserOptionsProject?: boolean;
@@ -38,4 +38,5 @@ export interface Schema {
   skipTests?: boolean;
   selector?: string;
   skipSelector?: boolean;
+  addPlugin?: boolean;
 }

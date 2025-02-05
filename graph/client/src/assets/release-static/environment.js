@@ -22,6 +22,24 @@ window.projectGraphResponse = {
   hash: '081624f3bbc67c126e9dc313133c5a0138ae383da39f8793b26609698aea957b',
   projects: [
     {
+      name: '@scoped/project-a',
+      type: 'lib',
+      data: {
+        tags: [],
+        root: 'libs/project-a',
+        files: [],
+      },
+    },
+    {
+      name: '@scoped/project-b',
+      type: 'lib',
+      data: {
+        tags: [],
+        root: 'libs/project-a',
+        files: [],
+      },
+    },
+    {
       name: 'products-product-detail-page',
       type: 'lib',
       data: {
@@ -121,7 +139,6 @@ window.projectGraphResponse = {
                 'libs/products/product-detail-page/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
           test: {
@@ -243,7 +260,6 @@ window.projectGraphResponse = {
                 'libs/shared/product/state/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
           test: {
@@ -311,7 +327,6 @@ window.projectGraphResponse = {
                 'libs/shared/product/types/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
         },
@@ -375,7 +390,6 @@ window.projectGraphResponse = {
                 'libs/shared/product/data/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
         },
@@ -480,7 +494,6 @@ window.projectGraphResponse = {
                 'libs/products/home-page/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
           test: {
@@ -598,7 +611,6 @@ window.projectGraphResponse = {
                 'libs/shared/cart/state/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
           test: {
@@ -684,7 +696,6 @@ window.projectGraphResponse = {
                 'libs/shared/product/ui/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
           test: {
@@ -748,7 +759,6 @@ window.projectGraphResponse = {
                 'libs/shared/e2e-utils/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
         },
@@ -828,7 +838,6 @@ window.projectGraphResponse = {
                 'libs/cart/cart-page/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
           test: {
@@ -969,7 +978,6 @@ window.projectGraphResponse = {
                 'libs/shared/header/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
           test: {
@@ -1037,7 +1045,6 @@ window.projectGraphResponse = {
                 'libs/shared/jsxify/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
         },
@@ -1136,7 +1143,6 @@ window.projectGraphResponse = {
             options: {
               lintFilePatterns: ['apps/products-e2e/**/*.{js,ts}'],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
         },
@@ -1208,7 +1214,6 @@ window.projectGraphResponse = {
             options: {
               lintFilePatterns: ['apps/cart-e2e/**/*.{ts,tsx,js,jsx}'],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
         },
@@ -1414,7 +1419,6 @@ window.projectGraphResponse = {
                 'apps/products/src/**/*.html',
               ],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
           test: {
@@ -1619,7 +1623,6 @@ window.projectGraphResponse = {
             options: {
               lintFilePatterns: ['apps/cart/**/*.{ts,tsx,js,jsx}'],
             },
-            outputs: ['{options.outputFile}'],
             inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
           },
           test: {
@@ -1651,6 +1654,13 @@ window.projectGraphResponse = {
     },
   ],
   dependencies: {
+    '@scoped/project-a': [
+      {
+        source: '@scoped/project-a',
+        target: '@scoped/project-b',
+      },
+    ],
+    '@scoped/project-b': [],
     'products-product-detail-page': [
       {
         source: 'products-product-detail-page',

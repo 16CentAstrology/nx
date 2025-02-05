@@ -1,64 +1,97 @@
-import type { Tree } from '@nrwl/devkit';
+import type { Tree } from '@nx/devkit';
+import { formatFiles, generateFiles, joinPathFragments } from '@nx/devkit';
+import { addToNgModule } from '../utils';
+import { getInstalledAngularVersionInfo } from '../utils/version-utils';
 import {
-  formatFiles,
-  normalizePath,
-  readProjectConfiguration,
-  readWorkspaceConfiguration,
-} from '@nrwl/devkit';
-import { wrapAngularDevkitSchematic } from '@nrwl/devkit/ngcli-adapter';
-import { pathStartsWith } from '../utils/path';
-import { exportComponentInEntryPoint } from './lib/component';
-import { normalizeOptions } from './lib/normalize-options';
-import type { NormalizedSchema, Schema } from './schema';
-import { getGeneratorDirectoryForInstalledAngularVersion } from '../../utils/get-generator-directory-for-ng-version';
-import { join } from 'path';
+  exportComponentInEntryPoint,
+  findModuleFromOptions,
+  normalizeOptions,
+  setGeneratorDefaults,
+} from './lib';
+import type { Schema } from './schema';
 
 export async function componentGenerator(tree: Tree, rawOptions: Schema) {
-  const generatorDirectory =
-    getGeneratorDirectoryForInstalledAngularVersion(tree);
-  if (generatorDirectory) {
-    let previousGenerator = await import(
-      join(__dirname, generatorDirectory, 'component')
+  const options = await normalizeOptions(tree, rawOptions);
+
+  const { major: angularMajorVersion } = getInstalledAngularVersionInfo(tree);
+  generateFiles(
+    tree,
+    joinPathFragments(__dirname, 'files'),
+    options.directory,
+    {
+      name: options.name,
+      fileName: options.fileName,
+      symbolName: options.symbolName,
+      exportDefault: options.exportDefault,
+      style: options.style,
+      inlineStyle: options.inlineStyle,
+      inlineTemplate: options.inlineTemplate,
+      standalone: options.standalone,
+      skipSelector: options.skipSelector,
+      changeDetection: options.changeDetection,
+      viewEncapsulation: options.viewEncapsulation,
+      displayBlock: options.displayBlock,
+      selector: options.selector,
+      // Angular v19 or higher defaults to true, while v18 or lower defaults to false
+      setStandalone:
+        (angularMajorVersion >= 19 && !options.standalone) ||
+        (angularMajorVersion < 19 && options.standalone),
+      angularMajorVersion,
+      tpl: '',
+    }
+  );
+
+  if (options.skipTests) {
+    const pathToSpecFile = joinPathFragments(
+      options.directory,
+      `${options.fileName}.spec.ts`
     );
-    await previousGenerator.default(tree, rawOptions);
-    return;
+
+    tree.delete(pathToSpecFile);
   }
 
-  const options = await normalizeOptions(tree, rawOptions);
-  const { projectSourceRoot, ...schematicOptions } = options;
+  if (options.inlineTemplate) {
+    const pathToTemplateFile = joinPathFragments(
+      options.directory,
+      `${options.fileName}.html`
+    );
 
-  checkPathUnderProjectRoot(tree, options);
+    tree.delete(pathToTemplateFile);
+  }
 
-  const angularComponentSchematic = wrapAngularDevkitSchematic(
-    '@schematics/angular',
-    'component'
-  );
-  await angularComponentSchematic(tree, schematicOptions);
+  if (options.style === 'none' || options.inlineStyle) {
+    const pathToStyleFile = joinPathFragments(
+      options.directory,
+      `${options.fileName}.${options.style}`
+    );
+
+    tree.delete(pathToStyleFile);
+  }
+
+  if (!options.skipImport && !options.standalone) {
+    const modulePath = findModuleFromOptions(
+      tree,
+      options,
+      options.projectRoot
+    );
+    addToNgModule(
+      tree,
+      options.directory,
+      modulePath,
+      options.name,
+      options.symbolName,
+      options.fileName,
+      'declarations',
+      true,
+      options.export
+    );
+  }
 
   exportComponentInEntryPoint(tree, options);
+  setGeneratorDefaults(tree, options);
 
-  await formatFiles(tree);
-}
-
-function checkPathUnderProjectRoot(tree: Tree, schema: NormalizedSchema): void {
-  if (!schema.path) {
-    return;
-  }
-
-  const project =
-    schema.project ?? readWorkspaceConfiguration(tree).defaultProject;
-  const { root } = readProjectConfiguration(tree, project);
-
-  let pathToComponent = normalizePath(schema.path);
-  pathToComponent = pathToComponent.startsWith('/')
-    ? pathToComponent.slice(1)
-    : pathToComponent;
-
-  if (!pathStartsWith(pathToComponent, root)) {
-    throw new Error(
-      `The path provided for the component (${schema.path}) does not exist under the project root (${root}). ` +
-        `Please make sure to provide a path that exists under the project root.`
-    );
+  if (!options.skipFormat) {
+    await formatFiles(tree);
   }
 }
 

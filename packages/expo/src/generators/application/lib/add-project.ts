@@ -1,36 +1,56 @@
 import {
   addProjectConfiguration,
-  offsetFromRoot,
+  joinPathFragments,
   ProjectConfiguration,
-  readWorkspaceConfiguration,
+  readNxJson,
   TargetConfiguration,
   Tree,
-  updateWorkspaceConfiguration,
-} from '@nrwl/devkit';
+  writeJson,
+} from '@nx/devkit';
+
+import { hasExpoPlugin } from '../../../utils/has-expo-plugin';
 import { NormalizedSchema } from './normalize-options';
+import { addBuildTargetDefaults } from '@nx/devkit/src/generators/target-defaults-utils';
+import { isUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
+import { getImportPath } from '@nx/js/src/utils/get-import-path';
 
 export function addProject(host: Tree, options: NormalizedSchema) {
+  const nxJson = readNxJson(host);
+  const hasPlugin = hasExpoPlugin(host);
+
+  if (!hasPlugin) {
+    addBuildTargetDefaults(host, '@nx/expo:build');
+  }
+
   const projectConfiguration: ProjectConfiguration = {
     root: options.appProjectRoot,
     sourceRoot: `${options.appProjectRoot}/src`,
     projectType: 'application',
-    targets: { ...getTargets(options) },
+    targets: hasPlugin ? {} : getTargets(options),
     tags: options.parsedTags,
   };
 
-  addProjectConfiguration(
-    host,
-    options.projectName,
-    projectConfiguration,
-    options.standaloneConfig
-  );
-
-  const workspace = readWorkspaceConfiguration(host);
-
-  if (!workspace.defaultProject) {
-    workspace.defaultProject = options.projectName;
-
-    updateWorkspaceConfiguration(host, workspace);
+  if (isUsingTsSolutionSetup(host)) {
+    const packageName = getImportPath(host, options.name);
+    writeJson(host, joinPathFragments(options.appProjectRoot, 'package.json'), {
+      name: packageName,
+      version: '0.0.1',
+      private: true,
+      nx: {
+        name: packageName === options.name ? undefined : options.name,
+        projectType: 'application',
+        sourceRoot: `${options.appProjectRoot}/src`,
+        targets: hasPlugin ? undefined : getTargets(options),
+        tags: options.parsedTags?.length ? options.parsedTags : undefined,
+      },
+    });
+  } else {
+    addProjectConfiguration(
+      host,
+      options.projectName,
+      projectConfiguration,
+      options.standaloneConfig
+    );
   }
 }
 
@@ -38,139 +58,79 @@ function getTargets(options: NormalizedSchema) {
   const architect: { [key: string]: TargetConfiguration } = {};
 
   architect.start = {
-    executor: '@nrwl/expo:start',
-    options: {
-      port: 8081,
-    },
+    executor: '@nx/expo:start',
+    dependsOn: ['sync-deps'],
+    options: {},
   };
 
   architect.serve = {
-    executor: 'nx:run-commands',
+    executor: '@nx/expo:serve',
+    dependsOn: ['sync-deps'],
     options: {
-      command: `nx start ${options.name}`,
+      port: 4200,
     },
   };
 
   architect['run-ios'] = {
-    executor: '@nrwl/expo:run',
+    executor: '@nx/expo:run',
+    dependsOn: ['sync-deps'],
     options: {
       platform: 'ios',
     },
   };
 
   architect['run-android'] = {
-    executor: '@nrwl/expo:run',
+    executor: '@nx/expo:run',
+    dependsOn: ['sync-deps'],
     options: {
       platform: 'android',
     },
   };
 
   architect['build'] = {
-    executor: '@nrwl/expo:build',
+    executor: '@nx/expo:build',
+    dependsOn: ['sync-deps'],
+    options: {},
+  };
+
+  architect['submit'] = {
+    executor: '@nx/expo:submit',
     options: {},
   };
 
   architect['build-list'] = {
-    executor: '@nrwl/expo:build-list',
-    options: {},
-  };
-
-  architect['download'] = {
-    executor: '@nrwl/expo:download',
-    options: {
-      output: `${options.appProjectRoot}/dist`,
-    },
-  };
-
-  // @deprecated, no longer supported in @expo/cli
-  architect['build-ios'] = {
-    executor: '@nrwl/expo:build-ios',
-    options: {},
-  };
-
-  // @deprecated, no longer supported in @expo/cli
-  architect['build-android'] = {
-    executor: '@nrwl/expo:build-android',
-    options: {},
-  };
-
-  // @deprecated, no longer supported in @expo/cli
-  architect['build-web'] = {
-    executor: '@nrwl/expo:build-web',
-    options: {},
-  };
-
-  // @deprecated, no longer supported in @expo/cli
-  architect['build-status'] = {
-    executor: '@nrwl/expo:build-web',
+    executor: '@nx/expo:build-list',
     options: {},
   };
 
   architect['sync-deps'] = {
-    executor: '@nrwl/expo:sync-deps',
-    options: {},
-  };
-
-  architect['ensure-symlink'] = {
-    executor: '@nrwl/expo:ensure-symlink',
-    options: {},
-  };
-
-  // @deprecated, no longer supported in @expo/cli
-  architect['publish'] = {
-    executor: '@nrwl/expo:publish',
-    options: {},
-  };
-
-  // @deprecated, no longer supported in @expo/cli
-  architect['publish-set'] = {
-    executor: '@nrwl/expo:publish-set',
-    options: {},
-  };
-
-  // @deprecated, no longer supported in @expo/cli
-  architect['rollback'] = {
-    executor: '@nrwl/expo:rollback',
+    executor: '@nx/expo:sync-deps',
     options: {},
   };
 
   architect['prebuild'] = {
-    executor: '@nrwl/expo:prebuild',
+    executor: '@nx/expo:prebuild',
+    dependsOn: ['sync-deps'],
     options: {},
   };
 
-  // @deprecated, no longer supported in @expo/cli
-  architect['eject'] = {
-    executor: 'nx:run-commands',
-    options: {
-      command: `nx prebuild ${options.name}`,
-    },
-  };
-
   architect['install'] = {
-    executor: '@nrwl/expo:install',
+    executor: '@nx/expo:install',
     options: {},
   };
 
   architect['update'] = {
-    executor: '@nrwl/expo:update',
+    executor: '@nx/expo:update',
     options: {},
   };
 
   architect['export'] = {
-    executor: '@nrwl/expo:export',
+    executor: '@nx/expo:export',
+    dependsOn: ['sync-deps'],
+    outputs: ['{options.outputDir}'],
     options: {
       platform: 'all',
-      outputDir: `${offsetFromRoot(options.appProjectRoot)}dist/${
-        options.appProjectRoot
-      }`,
-    },
-  };
-
-  architect['export-web'] = {
-    executor: '@nrwl/expo:export',
-    options: {
-      bundler: 'webpack',
+      outputDir: `dist/${options.appProjectRoot}`,
     },
   };
 

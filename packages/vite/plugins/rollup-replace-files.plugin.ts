@@ -1,13 +1,21 @@
 // source: https://github.com/Myrmod/vitejs-theming/blob/master/build-plugins/rollup/replace-files.js
 
-import { resolve } from 'path';
-
 /**
  * @function replaceFiles
  * @param {FileReplacement[]} replacements
- * @return {({name: "rollup-plugin-replace-files", enforce: "pre", Promise<resolveId>})}
+ * @return {({name: "rollup-plugin-replace-files", enforce: "pre" | "post" | undefined, Promise<resolveId>})}
  */
-export default function replaceFiles(replacements: FileReplacement[]) {
+export function replaceFiles(replacements: FileReplacement[]): {
+  name: string;
+  enforce: 'pre' | 'post' | undefined;
+  resolveId(
+    source: any,
+    importer: any,
+    options: any
+  ): Promise<{
+    id: string;
+  }>;
+} {
   if (!replacements?.length) {
     return null;
   }

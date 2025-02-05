@@ -1,7 +1,7 @@
-import '../src/styles.scss';
+import '../src/styles.css';
 
-import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
+export const parameters = {};
 
 export const decorators = [
   (Story, context) => {
@@ -22,3 +22,4 @@ export const decorators = [
     );
   },
 ];
+export const tags = ['autodocs'];

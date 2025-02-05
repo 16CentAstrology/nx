@@ -13,7 +13,7 @@ async function generateGraph(directory: string, name: string) {
   try {
     execSync(
       'npx nx graph --file ./node_modules/.cache/nx-graph-gen/graph.html',
-      { cwd: directory, stdio: 'ignore' }
+      { cwd: directory, stdio: 'ignore', windowsHide: false }
     );
   } catch {
     console.error(`Could not run graph command in directory ${directory}`);
@@ -32,11 +32,25 @@ async function generateGraph(directory: string, name: string) {
     /window.taskGraphResponse = (.*?);/
   );
 
+  const expandedTaskInputsReponse = environmentJs.match(
+    /window.expandedTaskInputsResponse = (.*?);/
+  );
+
+  const sourceMapsResponse = environmentJs.match(
+    /window.sourceMapsResponse = (.*?);/
+  );
+
   ensureDirSync(
     join(__dirname, '../graph/client/src/assets/generated-project-graphs/')
   );
   ensureDirSync(
     join(__dirname, '../graph/client/src/assets/generated-task-graphs/')
+  );
+  ensureDirSync(
+    join(__dirname, '../graph/client/src/assets/generated-task-inputs/')
+  );
+  ensureDirSync(
+    join(__dirname, '../graph/client/src/assets/generated-source-maps/')
   );
 
   writeFileSync(
@@ -56,11 +70,29 @@ async function generateGraph(directory: string, name: string) {
     ),
     taskGraphResponse[1]
   );
+
+  writeFileSync(
+    join(
+      __dirname,
+      '../graph/client/src/assets/generated-task-inputs/',
+      `${name}.json`
+    ),
+    expandedTaskInputsReponse[1]
+  );
+
+  writeFileSync(
+    join(
+      __dirname,
+      '../graph/client/src/assets/generated-source-maps/',
+      `${name}.json`
+    ),
+    sourceMapsResponse[1]
+  );
 }
 
 (async () => {
   const parsedArgs = yargs
-    .scriptName('yarn generate-graph')
+    .scriptName('pnpm generate-graph')
     .strictOptions()
     .option('name', {
       type: 'string',

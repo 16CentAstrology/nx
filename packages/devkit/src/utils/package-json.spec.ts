@@ -18,6 +18,30 @@ describe('addDependenciesToPackageJson', () => {
     });
   });
 
+  it('should not add dependency if it is not greater', () => {
+    writeJson(tree, 'package.json', {
+      dependencies: {
+        tslib: '^2.0.0',
+      },
+      devDependencies: {
+        jest: '28.1.3',
+      },
+    });
+    const installTask = addDependenciesToPackageJson(
+      tree,
+      {
+        tslib: '^2.3.0',
+      },
+      { jest: '28.1.1' }
+    );
+
+    expect(readJson(tree, 'package.json')).toEqual({
+      dependencies: { tslib: '^2.3.0' },
+      devDependencies: { jest: '28.1.3' },
+    });
+    expect(installTask).toBeDefined();
+  });
+
   it('should add dependencies to the package.json', () => {
     const installTask = addDependenciesToPackageJson(
       tree,
@@ -53,12 +77,12 @@ describe('addDependenciesToPackageJson', () => {
       tree,
       {},
       {
-        '@nrwl/react': 'latest',
+        '@nx/react': 'latest',
       }
     );
     expect(readJson(tree, 'package.json').devDependencies).toEqual({
       jest: 'latest',
-      '@nrwl/react': 'latest',
+      '@nx/react': 'latest',
     });
     expect(installTask).toBeDefined();
   });
@@ -81,10 +105,10 @@ describe('addDependenciesToPackageJson', () => {
     // ARRANGE
     writeJson(tree, 'package.json', {
       dependencies: {
-        '@nrwl/angular': 'latest',
+        '@nx/angular': 'latest',
       },
       devDependencies: {
-        '@nrwl/next': 'latest',
+        '@nx/next': 'latest',
       },
     });
 
@@ -92,20 +116,20 @@ describe('addDependenciesToPackageJson', () => {
     const installTask = addDependenciesToPackageJson(
       tree,
       {
-        '@nrwl/next': 'next',
+        '@nx/next': 'next',
       },
       {
-        '@nrwl/angular': 'next',
+        '@nx/angular': 'next',
       }
     );
 
     // ASSERT
     const { dependencies, devDependencies } = readJson(tree, 'package.json');
     expect(dependencies).toEqual({
-      '@nrwl/angular': 'next',
+      '@nx/angular': 'next',
     });
     expect(devDependencies).toEqual({
-      '@nrwl/next': 'next',
+      '@nx/next': 'next',
     });
     expect(installTask).toBeDefined();
   });
@@ -114,10 +138,10 @@ describe('addDependenciesToPackageJson', () => {
     // ARRANGE
     writeJson(tree, 'package.json', {
       dependencies: {
-        '@nrwl/angular': 'next',
+        '@nx/angular': 'next',
       },
       devDependencies: {
-        '@nrwl/next': 'next',
+        '@nx/next': 'next',
       },
     });
 
@@ -125,20 +149,20 @@ describe('addDependenciesToPackageJson', () => {
     const installTask = addDependenciesToPackageJson(
       tree,
       {
-        '@nrwl/next': 'latest',
+        '@nx/next': 'latest',
       },
       {
-        '@nrwl/angular': 'latest',
+        '@nx/angular': 'latest',
       }
     );
 
     // ASSERT
     const { dependencies, devDependencies } = readJson(tree, 'package.json');
     expect(dependencies).toEqual({
-      '@nrwl/angular': 'next',
+      '@nx/angular': 'next',
     });
     expect(devDependencies).toEqual({
-      '@nrwl/next': 'next',
+      '@nx/next': 'next',
     });
     expect(installTask).toBeDefined();
   });
@@ -147,10 +171,10 @@ describe('addDependenciesToPackageJson', () => {
     // ARRANGE
     writeJson(tree, 'package.json', {
       dependencies: {
-        '@nrwl/angular': '14.0.0',
+        '@nx/angular': '14.0.0',
       },
       devDependencies: {
-        '@nrwl/next': '14.0.0',
+        '@nx/next': '14.0.0',
       },
     });
 
@@ -158,20 +182,20 @@ describe('addDependenciesToPackageJson', () => {
     const installTask = addDependenciesToPackageJson(
       tree,
       {
-        '@nrwl/next': '14.1.0',
+        '@nx/next': '14.1.0',
       },
       {
-        '@nrwl/angular': '14.1.0',
+        '@nx/angular': '14.1.0',
       }
     );
 
     // ASSERT
     const { dependencies, devDependencies } = readJson(tree, 'package.json');
     expect(dependencies).toEqual({
-      '@nrwl/angular': '14.1.0',
+      '@nx/angular': '14.1.0',
     });
     expect(devDependencies).toEqual({
-      '@nrwl/next': '14.1.0',
+      '@nx/next': '14.1.0',
     });
     expect(installTask).toBeDefined();
   });
@@ -180,10 +204,10 @@ describe('addDependenciesToPackageJson', () => {
     // ARRANGE
     writeJson(tree, 'package.json', {
       dependencies: {
-        '@nrwl/angular': '14.1.0',
+        '@nx/angular': '14.1.0',
       },
       devDependencies: {
-        '@nrwl/next': '14.1.0',
+        '@nx/next': '14.1.0',
       },
     });
 
@@ -191,20 +215,94 @@ describe('addDependenciesToPackageJson', () => {
     const installTask = addDependenciesToPackageJson(
       tree,
       {
-        '@nrwl/next': '14.0.0',
+        '@nx/next': '14.0.0',
       },
       {
-        '@nrwl/angular': '14.0.0',
+        '@nx/angular': '14.0.0',
       }
     );
 
     // ASSERT
     const { dependencies, devDependencies } = readJson(tree, 'package.json');
     expect(dependencies).toEqual({
-      '@nrwl/angular': '14.1.0',
+      '@nx/angular': '14.1.0',
     });
     expect(devDependencies).toEqual({
-      '@nrwl/next': '14.1.0',
+      '@nx/next': '14.1.0',
+    });
+    expect(installTask).toBeDefined();
+  });
+
+  it('should not overwrite dependencies when they exist in "dependencies" and one of the versions is lesser', () => {
+    // ARRANGE
+    writeJson(tree, 'package.json', {
+      dependencies: {
+        '@nx/angular': '14.2.0',
+        '@nx/cypress': '14.1.1',
+      },
+      devDependencies: {
+        '@nx/next': '14.0.0',
+        '@nx/vite': '14.1.0',
+      },
+    });
+
+    // ACT
+    const installTask = addDependenciesToPackageJson(
+      tree,
+      {
+        '@nx/angular': '14.1.0',
+      },
+      {
+        '@nx/next': '14.1.0',
+      }
+    );
+
+    // ASSERT
+    const { dependencies, devDependencies } = readJson(tree, 'package.json');
+    expect(dependencies).toEqual({
+      '@nx/angular': '14.2.0',
+      '@nx/cypress': '14.1.1',
+    });
+    expect(devDependencies).toEqual({
+      '@nx/next': '14.1.0',
+      '@nx/vite': '14.1.0',
+    });
+    expect(installTask).toBeDefined();
+  });
+
+  it('should not overwrite dependencies when they exist in "devDependencies" and one of the versions is lesser', () => {
+    // ARRANGE
+    writeJson(tree, 'package.json', {
+      dependencies: {
+        '@nx/angular': '14.0.0',
+        '@nx/cypress': '14.1.1',
+      },
+      devDependencies: {
+        '@nx/next': '14.2.0',
+        '@nx/vite': '14.1.0',
+      },
+    });
+
+    // ACT
+    const installTask = addDependenciesToPackageJson(
+      tree,
+      {
+        '@nx/angular': '14.1.0',
+      },
+      {
+        '@nx/next': '14.1.0',
+      }
+    );
+
+    // ASSERT
+    const { dependencies, devDependencies } = readJson(tree, 'package.json');
+    expect(dependencies).toEqual({
+      '@nx/angular': '14.1.0',
+      '@nx/cypress': '14.1.1',
+    });
+    expect(devDependencies).toEqual({
+      '@nx/next': '14.2.0',
+      '@nx/vite': '14.1.0',
     });
     expect(installTask).toBeDefined();
   });
@@ -213,10 +311,10 @@ describe('addDependenciesToPackageJson', () => {
     // ARRANGE
     writeJson(tree, 'package.json', {
       dependencies: {
-        '@nrwl/angular': '14.0.0',
+        '@nx/angular': '14.0.0',
       },
       devDependencies: {
-        '@nrwl/next': '14.1.0',
+        '@nx/next': '14.1.0',
       },
     });
 
@@ -224,20 +322,59 @@ describe('addDependenciesToPackageJson', () => {
     const installTask = addDependenciesToPackageJson(
       tree,
       {
-        '@nrwl/next': '14.0.0',
+        '@nx/next': '14.0.0',
       },
       {
-        '@nrwl/angular': '14.1.0',
+        '@nx/angular': '14.1.0',
       }
     );
 
     // ASSERT
     const { dependencies, devDependencies } = readJson(tree, 'package.json');
     expect(dependencies).toEqual({
-      '@nrwl/angular': '14.1.0',
+      '@nx/angular': '14.1.0',
     });
     expect(devDependencies).toEqual({
-      '@nrwl/next': '14.1.0',
+      '@nx/next': '14.1.0',
+    });
+    expect(installTask).toBeDefined();
+  });
+
+  it('should overwrite dependencies when their version is not in a semver format', () => {
+    // ARRANGE
+    writeJson(tree, 'package.json', {
+      dependencies: {
+        '@nx/angular': 'github:reponame/packageNameOne',
+        '@nx/vite': 'git://github.com/npm/cli.git#v14.2.0', // this format is parsable
+      },
+      devDependencies: {
+        '@nx/next': '14.1.0',
+      },
+    });
+
+    // ACT
+    const installTask = addDependenciesToPackageJson(
+      tree,
+      {
+        '@nx/next': 'github:reponame/packageNameTwo',
+        '@nx/cypress':
+          'git+https://username@github.com/reponame/packagename.git',
+        '@nx/vite': '14.0.1',
+      },
+      {
+        '@nx/angular': '14.1.0',
+      }
+    );
+
+    // ASSERT
+    const { dependencies, devDependencies } = readJson(tree, 'package.json');
+    expect(dependencies).toEqual({
+      '@nx/angular': '14.1.0',
+      '@nx/cypress': 'git+https://username@github.com/reponame/packagename.git',
+      '@nx/vite': 'git://github.com/npm/cli.git#v14.2.0',
+    });
+    expect(devDependencies).toEqual({
+      '@nx/next': 'github:reponame/packageNameTwo',
     });
     expect(installTask).toBeDefined();
   });
@@ -246,10 +383,10 @@ describe('addDependenciesToPackageJson', () => {
     // ARRANGE
     writeJson(tree, 'package.json', {
       dependencies: {
-        '@nrwl/angular': 'latest',
+        '@nx/angular': 'latest',
       },
       devDependencies: {
-        '@nrwl/next': 'latest',
+        '@nx/next': 'latest',
       },
     });
 
@@ -257,22 +394,22 @@ describe('addDependenciesToPackageJson', () => {
     const installTask = addDependenciesToPackageJson(
       tree,
       {
-        '@nrwl/next': 'next',
-        '@nrwl/cypress': 'latest',
+        '@nx/next': 'next',
+        '@nx/cypress': 'latest',
       },
       {
-        '@nrwl/angular': 'next',
+        '@nx/angular': 'next',
       }
     );
 
     // ASSERT
     const { dependencies, devDependencies } = readJson(tree, 'package.json');
     expect(dependencies).toEqual({
-      '@nrwl/angular': 'next',
-      '@nrwl/cypress': 'latest',
+      '@nx/angular': 'next',
+      '@nx/cypress': 'latest',
     });
     expect(devDependencies).toEqual({
-      '@nrwl/next': 'next',
+      '@nx/next': 'next',
     });
     expect(installTask).toBeDefined();
   });
@@ -309,43 +446,43 @@ describe('addDependenciesToPackageJson', () => {
     });
     expect(installTask).toBeDefined();
   });
+
+  it('should allow existing versions to be kept', () => {
+    writeJson(tree, 'package.json', {
+      dependencies: {
+        foo: '1.0.0',
+      },
+    });
+
+    addDependenciesToPackageJson(
+      tree,
+      {
+        foo: '2.0.0',
+      },
+      {},
+      undefined,
+      true
+    );
+
+    const result = readJson(tree, 'package.json');
+    expect(result.dependencies).toEqual({
+      foo: '1.0.0',
+    });
+  });
 });
 
-describe('ensureDependencies', () => {
+describe('ensurePackage', () => {
   let tree: Tree;
 
   beforeEach(() => {
     tree = createTree();
   });
 
-  it('should return without error when dependency is satisfied', async () => {
-    writeJson(tree, 'package.json', {
-      devDependencies: {
-        '@nrwl/vite': '15.0.0',
-      },
-    });
-
-    await expect(
-      ensurePackage(tree, '@nrwl/vite', '>=15.0.0', {
-        throwOnMissing: true,
-      })
-    ).resolves.toBeUndefined();
-  });
-
-  it('should throw when dependencies are missing', async () => {
+  it('should return package when present', async () => {
     writeJson(tree, 'package.json', {});
 
-    await expect(() =>
-      ensurePackage(tree, '@nrwl/does-not-exist', '>=15.0.0', {
-        throwOnMissing: true,
-      })
-    ).rejects.toThrow(/-D( -W)? @nrwl\/does-not-exist@>=15.0.0/);
-
-    await expect(() =>
-      ensurePackage(tree, '@nrwl/does-not-exist', '>=15.0.0', {
-        dev: false,
-        throwOnMissing: true,
-      })
-    ).rejects.toThrow('@nrwl/does-not-exist@>=15.0.0');
+    expect(ensurePackage('@nx/devkit', '>=15.0.0')).toEqual(
+      require('@nx/devkit')
+    ); // return void
   });
 });

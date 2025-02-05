@@ -1,12 +1,11 @@
-import type { Tree } from '@nrwl/devkit';
+import type { Tree } from '@nx/devkit';
 import {
   joinPathFragments,
   offsetFromRoot,
   updateJson,
   updateProjectConfiguration,
-} from '@nrwl/devkit';
-import { convertToNxProjectGenerator } from '@nrwl/workspace/generators';
-import { getRootTsConfigPathInTree } from '@nrwl/workspace/src/utilities/typescript';
+} from '@nx/devkit';
+import { getRootTsConfigPathInTree } from '@nx/js';
 import { basename } from 'path';
 import type { GeneratorOptions } from '../../schema';
 import type {
@@ -15,6 +14,7 @@ import type {
   Target,
   ValidationResult,
 } from '../../utilities';
+import { convertToNxProject } from '../../utilities';
 import type { BuilderMigratorClassType } from '../builders';
 import {
   AngularDevkitKarmaMigrator,
@@ -32,7 +32,13 @@ type SupportedTargets =
   | 'server'
   | 'serveSsr';
 const supportedTargets: Record<SupportedTargets, Target> = {
-  build: { builders: ['@angular-devkit/build-angular:browser'] },
+  build: {
+    builders: [
+      '@angular-devkit/build-angular:application',
+      '@angular-devkit/build-angular:browser',
+      '@angular-devkit/build-angular:browser-esbuild',
+    ],
+  },
   e2e: {
     acceptMultipleDefinitions: true,
     builders: [
@@ -41,10 +47,20 @@ const supportedTargets: Record<SupportedTargets, Target> = {
     ],
   },
   i18n: { builders: ['@angular-devkit/build-angular:extract-i18n'] },
-  prerender: { builders: ['@nguniversal/builders:prerender'] },
+  prerender: {
+    builders: [
+      '@nguniversal/builders:prerender',
+      '@angular-devkit/build-angular:prerender',
+    ],
+  },
   serve: { builders: ['@angular-devkit/build-angular:dev-server'] },
   server: { builders: ['@angular-devkit/build-angular:server'] },
-  serveSsr: { builders: ['@nguniversal/builders:ssr-dev-server'] },
+  serveSsr: {
+    builders: [
+      '@nguniversal/builders:ssr-dev-server',
+      '@angular-devkit/build-angular:ssr-dev-server',
+    ],
+  },
 };
 
 // TODO(leo): this will replace `supportedTargets` once the full refactor is done.
@@ -87,19 +103,25 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
   }
 
   override async migrate(): Promise<void> {
+    await super.migrate();
+
+    if (this.skipMigration === true) {
+      return;
+    }
+
+    this.updateProjectConfiguration();
+
     await this.e2eMigrator.migrate();
 
     this.moveProjectFiles();
-    await this.updateProjectConfiguration();
+    this.updateProjectConfigurationTargets();
 
     for (const builderMigrator of this.builderMigrators ?? []) {
       await builderMigrator.migrate();
     }
 
     this.updateTsConfigs();
-    this.updateCacheableOperations(
-      [this.targetNames.build, this.targetNames.e2e].filter(Boolean)
-    );
+    this.setCacheableOperations();
   }
 
   override validate(): ValidationResult {
@@ -117,7 +139,7 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
 
   private moveProjectFiles(): void {
     // project is self-contained and can be safely moved
-    if (this.projectConfig.root !== '') {
+    if (this.project.oldRoot !== '') {
       this.moveDir(this.project.oldRoot, this.project.newRoot);
       return;
     }
@@ -145,10 +167,39 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
     this.moveDir(this.project.oldSourceRoot, this.project.newSourceRoot);
   }
 
-  private async updateProjectConfiguration(): Promise<void> {
+  private setCacheableOperations(): void {
+    const toCache = [];
+    if (
+      this.targetNames.build &&
+      !this.shouldSkipTargetTypeMigration('build')
+    ) {
+      toCache.push(this.targetNames.build);
+    }
+    if (this.targetNames.e2e && !this.shouldSkipTargetTypeMigration('e2e')) {
+      toCache.push(this.targetNames.e2e);
+    }
+
+    if (toCache.length) {
+      this.updateCacheableOperations(toCache);
+    }
+  }
+
+  private updateProjectConfiguration(): void {
+    convertToNxProject(this.tree, this.project.name);
+    this.moveFile(
+      joinPathFragments(this.project.oldRoot, 'project.json'),
+      joinPathFragments(this.project.newRoot, 'project.json')
+    );
+
     this.projectConfig.root = this.project.newRoot;
     this.projectConfig.sourceRoot = this.project.newSourceRoot;
 
+    updateProjectConfiguration(this.tree, this.project.name, {
+      ...this.projectConfig,
+    });
+  }
+
+  private updateProjectConfigurationTargets(): void {
     if (
       !this.projectConfig.targets ||
       !Object.keys(this.projectConfig.targets).length
@@ -156,20 +207,16 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
       this.logger.warn(
         'The project does not have any targets configured. Skipping updating targets.'
       );
-    } else {
-      this.updateBuildTargetConfiguration();
-      this.updateServerTargetConfiguration();
-      this.updatePrerenderTargetConfiguration();
-      this.updateServeSsrTargetConfiguration();
+      return;
     }
+
+    this.updateBuildTargetConfiguration();
+    this.updateServerTargetConfiguration();
+    this.updatePrerenderTargetConfiguration();
+    this.updateServeSsrTargetConfiguration();
 
     updateProjectConfiguration(this.tree, this.project.name, {
       ...this.projectConfig,
-    });
-
-    await convertToNxProjectGenerator(this.tree, {
-      project: this.project.name,
-      skipFormat: true,
     });
   }
 
@@ -192,15 +239,28 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
         this.project.newRoot,
         this.targetNames.server ? 'browser' : ''
       );
-    buildOptions.index =
-      buildOptions.index && this.convertAsset(buildOptions.index);
+    if (buildOptions.index) {
+      if (typeof buildOptions.index === 'string') {
+        buildOptions.index = this.convertAsset(buildOptions.index);
+      } else {
+        buildOptions.index.input =
+          buildOptions.index.input &&
+          this.convertAsset(buildOptions.index.input);
+      }
+    }
     buildOptions.main =
       buildOptions.main && this.convertAsset(buildOptions.main);
+    buildOptions.browser =
+      buildOptions.browser && this.convertAsset(buildOptions.browser);
+    buildOptions.server =
+      buildOptions.server && this.convertAsset(buildOptions.server);
     buildOptions.polyfills =
       buildOptions.polyfills &&
       (Array.isArray(buildOptions.polyfills)
-        ? buildOptions.polyfills.map((asset) => this.convertAsset(asset))
-        : this.convertAsset(buildOptions.polyfills as string));
+        ? buildOptions.polyfills.map((asset) =>
+            this.convertSourceRootPath(asset)
+          )
+        : this.convertSourceRootPath(buildOptions.polyfills));
     buildOptions.tsConfig =
       buildOptions.tsConfig &&
       joinPathFragments(this.project.newRoot, basename(buildOptions.tsConfig));
@@ -219,6 +279,22 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
         replace: this.convertAsset(replacement.replace),
         with: this.convertAsset(replacement.with),
       }));
+    buildOptions.serviceWorker =
+      buildOptions.serviceWorker &&
+      typeof buildOptions.serviceWorker === 'string' &&
+      this.convertAsset(buildOptions.serviceWorker);
+    buildOptions.ngswConfigPath =
+      buildOptions.ngswConfigPath &&
+      this.convertAsset(buildOptions.ngswConfigPath);
+    if (buildOptions.prerender?.routesFile) {
+      buildOptions.prerender.routesFile = this.convertAsset(
+        buildOptions.prerender.routesFile
+      );
+    }
+    buildOptions.ssr =
+      buildOptions.ssr &&
+      typeof buildOptions.ssr === 'string' &&
+      this.convertAsset(buildOptions.ssr);
   }
 
   private convertServerOptions(serverOptions: any): void {
@@ -243,6 +319,10 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
       this.logger.warn(
         'There is no build target in the project configuration. Skipping updating the build target configuration.'
       );
+      return;
+    }
+
+    if (this.shouldSkipTargetTypeMigration('build')) {
       return;
     }
 
@@ -282,7 +362,10 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
   }
 
   private updatePrerenderTargetConfiguration(): void {
-    if (!this.targetNames.prerender) {
+    if (
+      !this.targetNames.prerender ||
+      this.shouldSkipTargetTypeMigration('prerender')
+    ) {
       return;
     }
 
@@ -301,7 +384,10 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
   }
 
   private updateServerTargetConfiguration(): void {
-    if (!this.targetNames.server) {
+    if (
+      !this.targetNames.server ||
+      this.shouldSkipTargetTypeMigration('server')
+    ) {
       return;
     }
 
@@ -341,19 +427,23 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
   }
 
   private updateServeSsrTargetConfiguration(): void {
-    if (!this.targetNames.serveSsr) {
+    if (
+      !this.targetNames.serveSsr ||
+      this.shouldSkipTargetTypeMigration('serveSsr')
+    ) {
       return;
     }
 
-    const serveSsrTarget =
-      this.projectConfig.targets[this.targetNames.serveSsr];
+    const ssrTarget =
+      this.targetNames.serveSsr ?? this.targetNames['serve-ssr'];
+    const serveSsrTarget = this.projectConfig.targets[ssrTarget];
     if (
       !serveSsrTarget.options &&
       (!serveSsrTarget.configurations ||
         !Object.keys(serveSsrTarget.configurations).length)
     ) {
       this.logger.warn(
-        `The target "${this.targetNames.serveSsr}" is not specifying any options or configurations. Skipping updating the target configuration.`
+        `The target "${ssrTarget}" is not specifying any options or configurations. Skipping updating the target configuration.`
       );
       return;
     }
@@ -381,7 +471,10 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
     rootTsConfigFile: string,
     projectOffsetFromRoot: string
   ): void {
-    if (!this.targetNames.build) {
+    if (
+      !this.targetNames.build ||
+      this.shouldSkipTargetTypeMigration('build')
+    ) {
       return;
     }
 
@@ -405,7 +498,10 @@ export class AppMigrator extends ProjectMigrator<SupportedTargets> {
   private updateTsConfigFileUsedByServerTarget(
     projectOffsetFromRoot: string
   ): void {
-    if (!this.targetNames.server) {
+    if (
+      !this.targetNames.server ||
+      this.shouldSkipTargetTypeMigration('server')
+    ) {
       return;
     }
 

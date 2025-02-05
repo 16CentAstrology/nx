@@ -1,63 +1,195 @@
-import 'dotenv/config';
-import { ExecutorContext } from '@nrwl/devkit';
-import { createServer, InlineConfig, mergeConfig, ViteDevServer } from 'vite';
-
 import {
-  getBuildAndSharedConfig,
-  getBuildTargetOptions,
-  getServerOptions,
+  ExecutorContext,
+  joinPathFragments,
+  parseTargetString,
+} from '@nx/devkit';
+import {
+  getNxTargetOptions,
+  getViteServerOptions,
+  normalizeViteConfigFilePath,
 } from '../../utils/options-utils';
-
 import { ViteDevServerExecutorOptions } from './schema';
 import { ViteBuildExecutorOptions } from '../build/schema';
+import {
+  createBuildableTsConfig,
+  loadViteDynamicImport,
+} from '../../utils/executor-utils';
+import { relative } from 'path';
+import { getBuildExtraArgs } from '../build/build.impl';
 
-export default async function* viteDevServerExecutor(
+export async function* viteDevServerExecutor(
   options: ViteDevServerExecutorOptions,
   context: ExecutorContext
 ): AsyncGenerator<{ success: boolean; baseUrl: string }> {
-  const mergedOptions = {
-    ...getBuildTargetOptions(options, context),
-    ...options,
-  } as ViteDevServerExecutorOptions & ViteBuildExecutorOptions;
+  process.env.VITE_CJS_IGNORE_WARNING = 'true';
+  // Allows ESM to be required in CJS modules. Vite will be published as ESM in the future.
+  const { mergeConfig, createServer, resolveConfig } =
+    await loadViteDynamicImport();
 
-  const serverConfig: InlineConfig = mergeConfig(
-    await getBuildAndSharedConfig(mergedOptions, context),
-    {
-      server: getServerOptions(mergedOptions, context),
-    } as InlineConfig
+  const projectRoot =
+    context.projectsConfigurations.projects[context.projectName].root;
+  const root =
+    projectRoot === '.'
+      ? process.cwd()
+      : relative(context.cwd, joinPathFragments(context.root, projectRoot));
+  createBuildableTsConfig(projectRoot, options, context);
+
+  // Retrieve the option for the configured buildTarget.
+  const buildTargetOptions: ViteBuildExecutorOptions = getNxTargetOptions(
+    options.buildTarget,
+    context
   );
 
-  const server = await createServer(serverConfig);
+  const { configuration } = parseTargetString(options.buildTarget, context);
 
-  const baseUrl = await runViteDevServer(server);
+  const { buildOptions, otherOptions: otherOptionsFromBuild } =
+    await getBuildExtraArgs(buildTargetOptions);
 
-  yield {
-    success: true,
-    baseUrl: baseUrl,
-  };
+  const viteConfigPath = normalizeViteConfigFilePath(
+    context.root,
+    projectRoot,
+    buildTargetOptions.configFile
+  );
+  const { serverOptions, otherOptions } = await getServerExtraArgs(
+    options,
+    configuration,
+    buildOptions,
+    otherOptionsFromBuild
+  );
+  const defaultMode =
+    otherOptions?.mode ?? buildTargetOptions?.['mode'] ?? 'development';
+  const resolved = await resolveConfig(
+    {
+      configFile: viteConfigPath,
+      mode: defaultMode,
+    },
+    'serve',
+    defaultMode,
+    process.env.NODE_ENV ?? defaultMode
+  );
 
-  // This Promise intentionally never resolves, leaving the process running
-  await new Promise<{ success: boolean }>(() => {});
+  // vite InlineConfig
+  const serverConfig = mergeConfig(
+    {
+      // This should not be needed as it's going to be set in vite.config.ts
+      // but leaving it here in case someone did not migrate correctly
+      root: resolved.root ?? root,
+      configFile: viteConfigPath,
+    },
+    {
+      server: {
+        ...(await getViteServerOptions(options, context)),
+        ...serverOptions,
+      },
+      ...otherOptions,
+    }
+  );
+
+  try {
+    const server = await createServer(serverConfig);
+    await runViteDevServer(server);
+    const resolvedUrls = [
+      ...server.resolvedUrls.local,
+      ...server.resolvedUrls.network,
+    ];
+
+    yield {
+      success: true,
+      baseUrl: resolvedUrls[0] ?? '',
+    };
+  } catch (e) {
+    console.error(e);
+    yield {
+      success: false,
+      baseUrl: '',
+    };
+  }
+
+  await new Promise<void>((resolve) => {
+    process.once('SIGINT', () => resolve());
+    process.once('SIGTERM', () => resolve());
+    process.once('exit', () => resolve());
+  });
 }
 
-async function runViteDevServer(server: ViteDevServer): Promise<string> {
-  try {
-    await server.listen();
-    server.printUrls();
+// vite ViteDevServer
+async function runViteDevServer(server: Record<string, any>): Promise<void> {
+  await server.listen();
 
-    const processOnExit = () => {
-      process.off('SIGINT', processOnExit);
-      process.off('SIGTERM', processOnExit);
-      process.off('exit', processOnExit);
-    };
+  server.printUrls();
 
-    process.on('SIGINT', processOnExit);
-    process.on('SIGTERM', processOnExit);
-    process.on('exit', processOnExit);
-    return `${server.config?.server?.https ? 'https' : 'http'}://${
-      server.config?.server?.host
-    }:${server.config?.server?.port}`;
-  } catch (err) {
-    console.log(err);
+  const processOnExit = async () => {
+    await server.close();
+  };
+
+  process.once('SIGINT', processOnExit);
+  process.once('SIGTERM', processOnExit);
+  process.once('exit', processOnExit);
+}
+
+export default viteDevServerExecutor;
+
+async function getServerExtraArgs(
+  options: ViteDevServerExecutorOptions,
+  configuration: string | undefined,
+  buildOptionsFromBuildTarget: Record<string, unknown> | undefined,
+  otherOptionsFromBuildTarget: Record<string, unknown> | undefined
+): Promise<{
+  // vite ServerOptions
+  serverOptions: Record<string, unknown>;
+  otherOptions: Record<string, any>;
+}> {
+  // support passing extra args to vite cli
+  const schema = await import('./schema.json');
+  const extraArgs = {};
+  for (const key of Object.keys(options)) {
+    if (!schema.properties[key]) {
+      extraArgs[key] = options[key];
+    }
   }
+
+  let serverOptions: Record<string, unknown> = {};
+  const serverSchemaKeys = [
+    'hmr',
+    'warmup',
+    'watch',
+    'middlewareMode',
+    'fs',
+    'origin',
+    'preTransformRequests',
+    'sourcemapIgnoreList',
+    'port',
+    'strictPort',
+    'host',
+    'https',
+    'open',
+    'proxy',
+    'cors',
+    'headers',
+  ];
+
+  let otherOptions = {};
+  for (const key of Object.keys(extraArgs)) {
+    if (serverSchemaKeys.includes(key)) {
+      serverOptions[key] = extraArgs[key];
+    } else {
+      otherOptions[key] = extraArgs[key];
+    }
+  }
+
+  if (configuration) {
+    serverOptions = {
+      ...serverOptions,
+      watch: buildOptionsFromBuildTarget?.watch ?? serverOptions?.watch,
+    };
+    otherOptions = {
+      ...otherOptions,
+      ...(otherOptionsFromBuildTarget ?? {}),
+    };
+  }
+
+  return {
+    serverOptions,
+    otherOptions,
+  };
 }

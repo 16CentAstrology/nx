@@ -1,10 +1,8 @@
-import { ExecutorContext, names } from '@nrwl/devkit';
+import { ExecutorContext, names, workspaceRoot } from '@nx/devkit';
 import { ChildProcess, fork } from 'child_process';
 import { join } from 'path';
 
-import { ensureNodeModulesSymlink } from '../../utils/ensure-node-modules-symlink';
 import { podInstall } from '../../utils/pod-install-task';
-import { installAsync } from '../install/install.impl';
 import { ExpoPrebuildOptions } from './schema';
 
 export interface ExpoPrebuildOutput {
@@ -17,18 +15,20 @@ export default async function* prebuildExecutor(
   options: ExpoPrebuildOptions,
   context: ExecutorContext
 ): AsyncGenerator<ExpoPrebuildOutput> {
-  const projectRoot = context.workspace.projects[context.projectName].root;
-  ensureNodeModulesSymlink(context.root, projectRoot);
+  const projectRoot =
+    context.projectsConfigurations.projects[context.projectName].root;
 
   try {
     await prebuildAsync(context.root, projectRoot, options);
 
     if (options.install) {
-      await installAsync(context.root, {
-        check: true,
-        fix: false,
-      });
-      await podInstall(join(context.root, projectRoot, 'ios'));
+      const {
+        installAsync,
+      } = require('@expo/cli/build/src/install/installAsync');
+      await installAsync([], {});
+      if (options.platform === 'ios') {
+        podInstall(join(context.root, projectRoot, 'ios'));
+      }
     }
 
     yield {
@@ -41,16 +41,16 @@ export default async function* prebuildExecutor(
   }
 }
 
-function prebuildAsync(
+export function prebuildAsync(
   workspaceRoot: string,
   projectRoot: string,
   options: ExpoPrebuildOptions
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     childProcess = fork(
-      join(workspaceRoot, './node_modules/@expo/cli/build/bin/cli'),
+      require.resolve('@expo/cli/build/bin/cli'),
       ['prebuild', ...createPrebuildOptions(options), '--no-install'],
-      { cwd: join(workspaceRoot, projectRoot) }
+      { cwd: join(workspaceRoot, projectRoot), env: process.env }
     );
 
     // Ensure the child process is killed when the parent exits
@@ -70,13 +70,20 @@ function prebuildAsync(
   });
 }
 
-const nxOptions = ['install'];
+const nxOptions = ['install', 'interactive']; // interactive is passed in by e2e tests
 // options from https://github.com/expo/expo/blob/main/packages/%40expo/cli/src/prebuild/index.ts
 function createPrebuildOptions(options: ExpoPrebuildOptions) {
   return Object.keys(options).reduce((acc, k) => {
     if (!nxOptions.includes(k)) {
       const v = options[k];
-      acc.push(`--${names(k).fileName}`, v);
+      if (typeof v === 'boolean') {
+        if (v === true) {
+          // when true, does not need to pass the value true, just need to pass the flag in kebob case
+          acc.push(`--${names(k).fileName}`);
+        }
+      } else {
+        acc.push(`--${names(k).fileName}`, v);
+      }
     }
     return acc;
   }, []);

@@ -2,16 +2,16 @@ import {
   addProjectConfiguration,
   readProjectConfiguration,
   Tree,
-} from '@nrwl/devkit';
-import { createTreeWithEmptyV1Workspace } from '@nrwl/devkit/testing';
-import { Linter } from '@nrwl/linter';
+} from '@nx/devkit';
+import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
+import { Linter } from '@nx/eslint';
 import { addProject } from './add-project';
 
 describe('Add Project', () => {
   let tree: Tree;
 
   beforeEach(() => {
-    tree = createTreeWithEmptyV1Workspace();
+    tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
     addProjectConfiguration(tree, 'my-app', {
       root: 'my-app',
       targets: {
@@ -29,9 +29,8 @@ describe('Add Project', () => {
   describe('app at root', () => {
     beforeEach(() => {
       addProject(tree, {
-        e2eName: 'my-app-e2e',
+        e2eDirectory: 'my-app-e2e',
         e2eProjectName: 'my-app-e2e',
-        e2eProjectDirectory: 'apps',
         e2eProjectRoot: 'apps/my-app-e2e',
         appProject: 'my-app',
         appFileName: 'my-app',
@@ -44,7 +43,7 @@ describe('Add Project', () => {
       });
     });
 
-    it('should update workspace.json', () => {
+    it('should update configuration', () => {
       const project = readProjectConfiguration(tree, 'my-app-e2e');
 
       expect(project.root).toEqual('apps/my-app-e2e');
@@ -61,16 +60,16 @@ describe('Add Project', () => {
       const project = readProjectConfiguration(tree, 'my-app-e2e');
       expect(project.targets).toMatchObject({
         'build-ios': {
-          executor: '@nrwl/detox:build',
+          executor: '@nx/detox:build',
         },
         'test-ios': {
-          executor: '@nrwl/detox:test',
+          executor: '@nx/detox:test',
         },
         'build-android': {
-          executor: '@nrwl/detox:build',
+          executor: '@nx/detox:build',
         },
         'test-android': {
-          executor: '@nrwl/detox:test',
+          executor: '@nx/detox:test',
         },
       });
     });
@@ -79,9 +78,8 @@ describe('Add Project', () => {
   describe('app with directory', () => {
     beforeEach(() => {
       addProject(tree, {
-        e2eName: 'my-dir-my-app-e2e',
+        e2eDirectory: 'my-dir-my-app-e2e',
         e2eProjectName: 'my-dir-my-app-e2e',
-        e2eProjectDirectory: 'apps',
         e2eProjectRoot: 'apps/my-dir/my-app-e2e',
         appProject: 'my-dir-my-app',
         appFileName: 'my-app',
@@ -94,7 +92,7 @@ describe('Add Project', () => {
       });
     });
 
-    it('should update workspace.json', () => {
+    it('should update configuration', () => {
       const project = readProjectConfiguration(tree, 'my-dir-my-app-e2e');
 
       expect(project.root).toEqual('apps/my-dir/my-app-e2e');
@@ -112,16 +110,16 @@ describe('Add Project', () => {
       const project = readProjectConfiguration(tree, 'my-dir-my-app-e2e');
       expect(project.targets).toMatchObject({
         'build-ios': {
-          executor: '@nrwl/detox:build',
+          executor: '@nx/detox:build',
         },
         'test-ios': {
-          executor: '@nrwl/detox:test',
+          executor: '@nx/detox:test',
         },
         'build-android': {
-          executor: '@nrwl/detox:build',
+          executor: '@nx/detox:build',
         },
         'test-android': {
-          executor: '@nrwl/detox:test',
+          executor: '@nx/detox:test',
         },
       });
     });

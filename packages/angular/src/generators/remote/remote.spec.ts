@@ -1,12 +1,19 @@
+import 'nx/src/internal-testing-utils/mock-project-graph';
+
+import { E2eTestRunner } from '../../utils/test-runners';
 import {
   getProjects,
+  readJson,
+  readNxJson,
   readProjectConfiguration,
-  readWorkspaceConfiguration,
-} from '@nrwl/devkit';
-import { createTreeWithEmptyWorkspace } from '@nrwl/devkit/testing';
-import host from '../host/host';
-import remote from './remote';
-import { E2eTestRunner } from '@nrwl/angular/src/utils/test-runners';
+  updateJson,
+} from '@nx/devkit';
+import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
+import {
+  generateTestHostApplication,
+  generateTestRemoteApplication,
+} from '../utils/testing';
+import { getRootTsConfigPathInTree } from '@nx/js';
 
 describe('MF Remote App Generator', () => {
   it('should generate a remote mf app with no host', async () => {
@@ -14,32 +21,87 @@ describe('MF Remote App Generator', () => {
     const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
     // ACT
-    await remote(tree, {
-      name: 'test',
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
       port: 4201,
+      typescriptConfiguration: false,
+      standalone: false,
+      skipFormat: true,
     });
 
     // ASSERT
-    expect(tree.read('apps/test/webpack.config.js', 'utf-8')).toMatchSnapshot();
+    expect(tree.read('test/webpack.config.js', 'utf-8')).toMatchSnapshot();
+    const tsconfigJson = readJson(tree, getRootTsConfigPathInTree(tree));
+    expect(tsconfigJson.compilerOptions.paths['test/Module']).toEqual([
+      'test/src/app/remote-entry/entry.module.ts',
+    ]);
+  });
+
+  it('should generate a remote mf app with no host when --typescriptConfiguration=true', async () => {
+    // ARRANGE
+    const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+
+    // ACT
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
+      port: 4201,
+      typescriptConfiguration: true,
+      standalone: false,
+      skipFormat: true,
+    });
+
+    // ASSERT
+    expect(tree.read('test/webpack.config.ts', 'utf-8')).toMatchSnapshot();
   });
 
   it('should generate a remote mf app with a host', async () => {
     // ARRANGE
     const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
-    await host(tree, {
-      name: 'host',
+    await generateTestHostApplication(tree, {
+      directory: 'host',
+      typescriptConfiguration: false,
+      standalone: false,
+      skipFormat: true,
     });
 
     // ACT
-    await remote(tree, {
-      name: 'test',
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
       host: 'host',
+      typescriptConfiguration: false,
+      standalone: false,
+      skipFormat: true,
     });
 
     // ASSERT
-    expect(tree.read('apps/host/webpack.config.js', 'utf-8')).toMatchSnapshot();
-    expect(tree.read('apps/test/webpack.config.js', 'utf-8')).toMatchSnapshot();
+    expect(tree.read('host/webpack.config.js', 'utf-8')).toMatchSnapshot();
+    expect(tree.read('test/webpack.config.js', 'utf-8')).toMatchSnapshot();
+  });
+
+  it('should generate a remote mf app with a host when --typescriptConfiguration=true', async () => {
+    // ARRANGE
+    const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+
+    await generateTestHostApplication(tree, {
+      directory: 'host',
+      typescriptConfiguration: true,
+      standalone: false,
+      skipFormat: true,
+    });
+
+    // ACT
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
+      host: 'host',
+      typescriptConfiguration: true,
+      standalone: false,
+      skipFormat: true,
+    });
+
+    // ASSERT
+    expect(tree.read('host/webpack.config.ts', 'utf-8')).toMatchSnapshot();
+    expect(tree.read('test/webpack.config.ts', 'utf-8')).toMatchSnapshot();
   });
 
   it('should error when a remote app is attempted to be generated with an incorrect host', async () => {
@@ -48,9 +110,11 @@ describe('MF Remote App Generator', () => {
 
     // ACT
     try {
-      await remote(tree, {
-        name: 'test',
+      await generateTestRemoteApplication(tree, {
+        directory: 'test',
         host: 'host',
+        standalone: false,
+        skipFormat: true,
       });
     } catch (error) {
       // ASSERT
@@ -63,14 +127,18 @@ describe('MF Remote App Generator', () => {
   it('should generate a remote mf app and automatically find the next port available', async () => {
     // ARRANGE
     const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
-    await remote(tree, {
-      name: 'existing',
+    await generateTestRemoteApplication(tree, {
+      directory: 'existing',
       port: 4201,
+      standalone: false,
+      skipFormat: true,
     });
 
     // ACT
-    await remote(tree, {
-      name: 'test',
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
+      standalone: false,
+      skipFormat: true,
     });
 
     // ASSERT
@@ -83,8 +151,10 @@ describe('MF Remote App Generator', () => {
     const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
     // ACT
-    await remote(tree, {
-      name: 'test',
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
+      standalone: false,
+      skipFormat: true,
     });
 
     // ASSERT
@@ -97,13 +167,15 @@ describe('MF Remote App Generator', () => {
     const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
     // ACT
-    await remote(tree, {
-      name: 'test',
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
       port: 4201,
+      standalone: false,
+      skipFormat: true,
     });
 
     // ASSERT
-    const { defaultProject } = readWorkspaceConfiguration(tree);
+    const { defaultProject } = readNxJson(tree);
     expect(defaultProject).toBeUndefined();
   });
 
@@ -112,29 +184,61 @@ describe('MF Remote App Generator', () => {
     const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
     // ACT
-    await remote(tree, {
-      name: 'test',
-      standalone: true,
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
+      typescriptConfiguration: false,
     });
 
     // ASSERT
-    expect(tree.exists(`apps/test/src/app/app.module.ts`)).toBeFalsy();
-    expect(tree.exists(`apps/test/src/app/app.component.ts`)).toBeFalsy();
+    expect(tree.exists(`test/src/app/app.module.ts`)).toBeFalsy();
+    expect(tree.exists(`test/src/app/app.component.ts`)).toBeFalsy();
     expect(
-      tree.exists(`apps/test/src/app/remote-entry/entry.module.ts`)
+      tree.exists(`test/src/app/remote-entry/entry.module.ts`)
     ).toBeFalsy();
-    expect(tree.read(`apps/test/src/bootstrap.ts`, 'utf-8')).toMatchSnapshot();
+    expect(tree.read(`test/src/bootstrap.ts`, 'utf-8')).toMatchSnapshot();
     expect(
-      tree.read(`apps/test/module-federation.config.js`, 'utf-8')
+      tree.read(`test/module-federation.config.js`, 'utf-8')
     ).toMatchSnapshot();
     expect(
-      tree.read(`apps/test/src/app/remote-entry/entry.component.ts`, 'utf-8')
+      tree.read(`test/src/app/remote-entry/entry.component.ts`, 'utf-8')
+    ).toMatchSnapshot();
+    expect(tree.read(`test/src/app/app.routes.ts`, 'utf-8')).toMatchSnapshot();
+    expect(
+      tree.read(`test/src/app/remote-entry/entry.routes.ts`, 'utf-8')
+    ).toMatchSnapshot();
+    const tsconfigJson = readJson(tree, getRootTsConfigPathInTree(tree));
+    expect(tsconfigJson.compilerOptions.paths['test/Routes']).toEqual([
+      'test/src/app/remote-entry/entry.routes.ts',
+    ]);
+  });
+
+  it('should generate the a remote setup for standalone components when --typescriptConfiguration=true', async () => {
+    // ARRANGE
+    const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+
+    // ACT
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
+      typescriptConfiguration: true,
+      skipFormat: true,
+    });
+
+    // ASSERT
+    expect(tree.exists(`test/src/app/app.module.ts`)).toBeFalsy();
+    expect(tree.exists(`test/src/app/app.component.ts`)).toBeFalsy();
+    expect(
+      tree.exists(`test/src/app/remote-entry/entry.module.ts`)
+    ).toBeFalsy();
+    expect(tree.read(`test/src/bootstrap.ts`, 'utf-8')).toMatchSnapshot();
+    expect(
+      tree.read(`test/module-federation.config.ts`, 'utf-8')
     ).toMatchSnapshot();
     expect(
-      tree.read(`apps/test/src/app/app.routes.ts`, 'utf-8')
+      tree.read(`test/src/app/remote-entry/entry.component.ts`, 'utf-8')
     ).toMatchSnapshot();
+    expect(tree.read(`test/src/app/app.routes.ts`, 'utf-8')).toMatchSnapshot();
     expect(
-      tree.read(`apps/test/src/app/remote-entry/entry.routes.ts`, 'utf-8')
+      tree.read(`test/src/app/remote-entry/entry.routes.ts`, 'utf-8')
     ).toMatchSnapshot();
   });
 
@@ -143,9 +247,11 @@ describe('MF Remote App Generator', () => {
     const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
     // ACT
-    await remote(tree, {
-      name: 'remote1',
+    await generateTestRemoteApplication(tree, {
+      directory: 'remote1',
       e2eTestRunner: E2eTestRunner.None,
+      standalone: false,
+      skipFormat: true,
     });
 
     // ASSERT
@@ -158,18 +264,21 @@ describe('MF Remote App Generator', () => {
     const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
     // ACT
-    await remote(tree, {
-      name: 'test',
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
       inlineTemplate: true,
+      standalone: false,
+      skipFormat: true,
     });
 
     // ASSERT
-    expect(tree.read('apps/test/src/app/app.component.ts', 'utf-8'))
+    expect(tree.read('test/src/app/app.component.ts', 'utf-8'))
       .toMatchInlineSnapshot(`
       "import { Component } from '@angular/core';
 
       @Component({
-        selector: 'proj-root',
+        selector: 'app-root',
+        standalone: false,
         template: '<router-outlet></router-outlet>'
 
       })
@@ -182,17 +291,15 @@ describe('MF Remote App Generator', () => {
     const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
     // ACT
-    await remote(tree, {
-      name: 'test',
-      standalone: true,
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
+      skipFormat: true,
     });
 
     // ASSERT
-    expect(tree.read('apps/test/src/index.html', 'utf-8')).not.toContain(
-      'proj-root'
-    );
-    expect(tree.read('apps/test/src/index.html', 'utf-8')).toContain(
-      'proj-test-entry'
+    expect(tree.read('test/src/index.html', 'utf-8')).not.toContain('app-root');
+    expect(tree.read('test/src/index.html', 'utf-8')).toContain(
+      'app-test-entry'
     );
   });
 
@@ -202,49 +309,134 @@ describe('MF Remote App Generator', () => {
       const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
       // ACT
-      await remote(tree, {
-        name: 'test',
+      await generateTestRemoteApplication(tree, {
+        directory: 'test',
         ssr: true,
+        typescriptConfiguration: false,
+        standalone: false,
       });
 
       // ASSERT
       const project = readProjectConfiguration(tree, 'test');
       expect(
-        tree.exists(`apps/test/src/app/remote-entry/entry.module.ts`)
+        tree.exists(`test/src/app/remote-entry/entry.module.ts`)
       ).toBeTruthy();
       expect(
-        tree.read(`apps/test/src/app/app.module.ts`, 'utf-8')
+        tree.read(`test/src/app/app.module.ts`, 'utf-8')
+      ).toMatchSnapshot();
+      expect(tree.read(`test/src/bootstrap.ts`, 'utf-8')).toMatchSnapshot();
+      expect(
+        tree.read(`test/src/bootstrap.server.ts`, 'utf-8')
+      ).toMatchSnapshot();
+      expect(tree.read(`test/src/main.server.ts`, 'utf-8')).toMatchSnapshot();
+      expect(tree.read(`test/src/server.ts`, 'utf-8')).toMatchSnapshot();
+      expect(
+        tree.read(`test/module-federation.config.js`, 'utf-8')
       ).toMatchSnapshot();
       expect(
-        tree.read(`apps/test/src/bootstrap.ts`, 'utf-8')
+        tree.read(`test/webpack.server.config.js`, 'utf-8')
       ).toMatchSnapshot();
       expect(
-        tree.read(`apps/test/src/bootstrap.server.ts`, 'utf-8')
+        tree.read(`test/src/app/remote-entry/entry.component.ts`, 'utf-8')
       ).toMatchSnapshot();
       expect(
-        tree.read(`apps/test/src/main.server.ts`, 'utf-8')
-      ).toMatchSnapshot();
-      expect(tree.read(`apps/test/server.ts`, 'utf-8')).toMatchSnapshot();
-      expect(
-        tree.read(`apps/test/module-federation.config.js`, 'utf-8')
+        tree.read(`test/src/app/app.routes.ts`, 'utf-8')
       ).toMatchSnapshot();
       expect(
-        tree.read(`apps/test/webpack.server.config.js`, 'utf-8')
-      ).toMatchSnapshot();
-      expect(
-        tree.read(`apps/test/src/app/remote-entry/entry.component.ts`, 'utf-8')
-      ).toMatchSnapshot();
-      expect(
-        tree.read(`apps/test/src/app/app.routes.ts`, 'utf-8')
-      ).toMatchSnapshot();
-      expect(
-        tree.read(`apps/test/src/app/remote-entry/entry.routes.ts`, 'utf-8')
+        tree.read(`test/src/app/remote-entry/entry.routes.ts`, 'utf-8')
       ).toMatchSnapshot();
       expect(project.targets.server).toMatchSnapshot();
       expect(
-        tree.read(`apps/test/src/app/remote-entry/entry.routes.ts`, 'utf-8')
+        tree.read(`test/src/app/remote-entry/entry.routes.ts`, 'utf-8')
       ).toMatchSnapshot();
       expect(project.targets['static-server']).toMatchSnapshot();
     });
+
+    it('should generate the correct files when --typescriptConfiguration=true', async () => {
+      // ARRANGE
+      const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+
+      // ACT
+      await generateTestRemoteApplication(tree, {
+        directory: 'test',
+        ssr: true,
+        typescriptConfiguration: true,
+        standalone: false,
+        skipFormat: true,
+      });
+
+      // ASSERT
+      const project = readProjectConfiguration(tree, 'test');
+      expect(
+        tree.exists(`test/src/app/remote-entry/entry.module.ts`)
+      ).toBeTruthy();
+      expect(
+        tree.read(`test/src/app/app.module.ts`, 'utf-8')
+      ).toMatchSnapshot();
+      expect(tree.read(`test/src/bootstrap.ts`, 'utf-8')).toMatchSnapshot();
+      expect(
+        tree.read(`test/src/bootstrap.server.ts`, 'utf-8')
+      ).toMatchSnapshot();
+      expect(tree.read(`test/src/main.server.ts`, 'utf-8')).toMatchSnapshot();
+      expect(tree.read(`test/src/server.ts`, 'utf-8')).toMatchSnapshot();
+      expect(
+        tree.read(`test/module-federation.config.ts`, 'utf-8')
+      ).toMatchSnapshot();
+      expect(
+        tree.read(`test/webpack.server.config.ts`, 'utf-8')
+      ).toMatchSnapshot();
+      expect(
+        tree.read(`test/src/app/remote-entry/entry.component.ts`, 'utf-8')
+      ).toMatchSnapshot();
+      expect(
+        tree.read(`test/src/app/app.routes.ts`, 'utf-8')
+      ).toMatchSnapshot();
+      expect(
+        tree.read(`test/src/app/remote-entry/entry.routes.ts`, 'utf-8')
+      ).toMatchSnapshot();
+      expect(project.targets.server).toMatchSnapshot();
+      expect(
+        tree.read(`test/src/app/remote-entry/entry.routes.ts`, 'utf-8')
+      ).toMatchSnapshot();
+      expect(project.targets['static-server']).toMatchSnapshot();
+    });
+  });
+
+  it('should not touch the package.json when run with `--skipPackageJson`', async () => {
+    const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+    let initialPackageJson;
+    updateJson(tree, 'package.json', (json) => {
+      json.dependencies = {};
+      json.devDependencies = {};
+      initialPackageJson = json;
+
+      return json;
+    });
+
+    await generateTestRemoteApplication(tree, {
+      directory: 'test',
+      port: 4201,
+      ssr: true,
+      skipFormat: true,
+      skipPackageJson: true,
+    });
+
+    const packageJson = readJson(tree, 'package.json');
+    expect(packageJson).toEqual(initialPackageJson);
+  });
+
+  it('should error when an invalid remote name is passed to the remote generator', async () => {
+    const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+
+    await expect(
+      generateTestRemoteApplication(tree, {
+        directory: 'test/my-remote',
+      })
+    ).rejects.toMatchInlineSnapshot(`
+      [Error: Invalid remote name: my-remote. Remote project names must:
+      - Start with a letter, dollar sign ($) or underscore (_)
+      - Followed by any valid character (letters, digits, underscores, or dollar signs)
+      The regular expression used is ^[a-zA-Z_$][a-zA-Z_$0-9]*$.]
+    `);
   });
 });

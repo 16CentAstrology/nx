@@ -1,20 +1,16 @@
-import {
-  joinPathFragments,
-  offsetFromRoot,
+import type {
   ProjectConfiguration,
   TargetConfiguration,
   Tree,
+} from '@nx/devkit';
+import {
+  joinPathFragments,
+  offsetFromRoot,
   updateProjectConfiguration,
-} from '@nrwl/devkit';
-import { getRootTsConfigPathInTree } from '@nrwl/workspace/src/utilities/typescript';
+} from '@nx/devkit';
+import { getRootTsConfigPathInTree } from '@nx/js';
 import { basename } from 'path';
-import type {
-  Logger,
-  ProjectMigrationInfo,
-  ValidationError,
-  ValidationResult,
-} from '../../utilities';
-import { arrayToString } from '../../utilities';
+import type { Logger, ProjectMigrationInfo } from '../../utilities';
 import { BuilderMigrator } from './builder.migrator';
 
 export class AngularDevkitKarmaMigrator extends BuilderMigrator {
@@ -26,7 +22,7 @@ export class AngularDevkitKarmaMigrator extends BuilderMigrator {
   ) {
     super(
       tree,
-      '@angular-devkit/build-angular:karma',
+      ['@angular-devkit/build-angular:karma'],
       'karma',
       project,
       projectConfig,
@@ -35,6 +31,10 @@ export class AngularDevkitKarmaMigrator extends BuilderMigrator {
   }
 
   override migrate(): void {
+    if (this.skipMigration) {
+      return;
+    }
+
     for (const [name, target] of this.targets) {
       this.moveFilePathsFromTargetToProjectRoot(target, [
         'karmaConfig',
@@ -59,22 +59,6 @@ export class AngularDevkitKarmaMigrator extends BuilderMigrator {
     }
   }
 
-  override validate(): ValidationResult {
-    const errors: ValidationError[] = [];
-    // TODO(leo): keeping restriction until the full refactor is done and we start
-    // expanding what's supported.
-    if (this.targets.size > 1) {
-      errors.push({
-        message: `There is more than one target using a builder that is used to build the project (${arrayToString(
-          [...this.targets.keys()]
-        )}).`,
-        hint: `Make sure the project only has one target with a builder that is used to build the project.`,
-      });
-    }
-
-    return errors.length ? errors : null;
-  }
-
   private updateTargetConfiguration(
     targetName: string,
     target: TargetConfiguration
@@ -89,8 +73,9 @@ export class AngularDevkitKarmaMigrator extends BuilderMigrator {
     target.options.main =
       target.options.main && this.convertAsset(target.options.main);
     target.options.polyfills = Array.isArray(target.options.polyfills)
-      ? target.options.polyfills.map((p) => this.convertAsset(p))
-      : target.options.polyfills && this.convertAsset(target.options.polyfills);
+      ? target.options.polyfills.map((p) => this.convertSourceRootPath(p))
+      : target.options.polyfills &&
+        this.convertSourceRootPath(target.options.polyfills);
     target.options.tsConfig =
       target.options.tsConfig &&
       joinPathFragments(

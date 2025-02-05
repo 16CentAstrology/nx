@@ -1,13 +1,30 @@
-import { formatFiles, getProjects, Tree } from '@nrwl/devkit';
-import type { Schema } from './schema';
-import applicationGenerator from '../application/application';
-import { normalizeProjectName } from '../utils/project';
-import { setupMf } from '../setup-mf/setup-mf';
+import {
+  addDependenciesToPackageJson,
+  formatFiles,
+  getProjects,
+  runTasksInSerial,
+  stripIndents,
+  Tree,
+} from '@nx/devkit';
+import {
+  determineProjectNameAndRootOptions,
+  ensureProjectName,
+} from '@nx/devkit/src/generators/project-name-and-root-utils';
+import { assertNotUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
+import { swcHelpersVersion } from '@nx/js/src/utils/versions';
 import { E2eTestRunner } from '../../utils/test-runners';
-import { addSsr, findNextAvailablePort } from './lib';
-import { runTasksInSerial } from '@nrwl/workspace/src/utilities/run-tasks-in-serial';
+import { applicationGenerator } from '../application/application';
+import { setupMf } from '../setup-mf/setup-mf';
+import { addMfEnvToTargetDefaultInputs } from '../utils/add-mf-env-to-inputs';
+import { findNextAvailablePort, updateSsrSetup } from './lib';
+import type { Schema } from './schema';
 
-export async function remote(tree: Tree, options: Schema) {
+export async function remote(tree: Tree, schema: Schema) {
+  assertNotUsingTsSolutionSetup(tree, 'angular', 'remote');
+
+  const { typescriptConfiguration = true, ...options }: Schema = schema;
+  options.standalone = options.standalone ?? true;
+
   const projects = getProjects(tree);
   if (options.host && !projects.has(options.host)) {
     throw new Error(
@@ -15,21 +32,40 @@ export async function remote(tree: Tree, options: Schema) {
     );
   }
 
-  const appName = normalizeProjectName(options.name, options.directory);
+  await ensureProjectName(tree, options, 'application');
+  const { projectName: remoteProjectName } =
+    await determineProjectNameAndRootOptions(tree, {
+      name: options.name,
+      projectType: 'application',
+      directory: options.directory,
+    });
+
+  const REMOTE_NAME_REGEX = '^[a-zA-Z_$][a-zA-Z_$0-9]*$';
+  const remoteNameRegex = new RegExp(REMOTE_NAME_REGEX);
+  if (!remoteNameRegex.test(remoteProjectName)) {
+    throw new Error(
+      stripIndents`Invalid remote name: ${remoteProjectName}. Remote project names must:
+       - Start with a letter, dollar sign ($) or underscore (_)
+       - Followed by any valid character (letters, digits, underscores, or dollar signs)
+      The regular expression used is ${REMOTE_NAME_REGEX}.`
+    );
+  }
   const port = options.port ?? findNextAvailablePort(tree);
 
   const appInstallTask = await applicationGenerator(tree, {
     ...options,
+    standalone: options.standalone,
     routing: true,
-    skipDefaultProject: true,
     port,
+    skipFormat: true,
+    bundler: 'webpack',
   });
 
   const skipE2E =
     !options.e2eTestRunner || options.e2eTestRunner === E2eTestRunner.None;
 
   await setupMf(tree, {
-    appName,
+    appName: remoteProjectName,
     mfType: 'remote',
     routing: true,
     host: options.host,
@@ -37,15 +73,37 @@ export async function remote(tree: Tree, options: Schema) {
     skipPackageJson: options.skipPackageJson,
     skipFormat: true,
     skipE2E,
-    e2eProjectName: skipE2E ? undefined : `${appName}-e2e`,
+    e2eProjectName: skipE2E ? undefined : `${remoteProjectName}-e2e`,
     standalone: options.standalone,
+    prefix: options.prefix,
+    typescriptConfiguration,
+    setParserOptionsProject: options.setParserOptionsProject,
   });
 
-  let installTasks = [appInstallTask];
+  const installTasks = [appInstallTask];
+  if (!options.skipPackageJson) {
+    const installSwcHelpersTask = addDependenciesToPackageJson(
+      tree,
+      {},
+      {
+        '@swc/helpers': swcHelpersVersion,
+      }
+    );
+    installTasks.push(installSwcHelpersTask);
+  }
+
   if (options.ssr) {
-    let ssrInstallTask = await addSsr(tree, { appName, port });
+    let ssrInstallTask = await updateSsrSetup(tree, {
+      appName: remoteProjectName,
+      port,
+      typescriptConfiguration,
+      standalone: options.standalone,
+      skipPackageJson: options.skipPackageJson,
+    });
     installTasks.push(ssrInstallTask);
   }
+
+  addMfEnvToTargetDefaultInputs(tree);
 
   if (!options.skipFormat) {
     await formatFiles(tree);

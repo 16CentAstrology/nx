@@ -2,13 +2,13 @@ import type {
   ProjectConfiguration,
   TargetConfiguration,
   Tree,
-} from '@nrwl/devkit';
+} from '@nx/devkit';
 import {
   joinPathFragments,
-  readWorkspaceConfiguration,
+  readNxJson,
   updateJson,
-  updateWorkspaceConfiguration,
-} from '@nrwl/devkit';
+  updateNxJson,
+} from '@nx/devkit';
 import { basename } from 'path';
 import type { Logger } from '../utilities/logger';
 import type {
@@ -31,13 +31,14 @@ export abstract class Migrator {
   }
 
   abstract migrate(): Promise<void> | void;
+
   abstract validate(): ValidationResult;
 
   protected convertAsset(asset: string | any): string | any {
     if (typeof asset === 'string') {
-      return this.convertSourceRootPath(asset);
+      return this.convertRootPath(asset);
     } else {
-      return { ...asset, input: this.convertSourceRootPath(asset.input) };
+      return { ...asset, input: this.convertRootPath(asset.input) };
     }
   }
 
@@ -46,6 +47,15 @@ export abstract class Migrator {
       ? joinPathFragments(
           this.project.newRoot,
           originalPath.replace(this.project.oldRoot, '')
+        )
+      : originalPath;
+  }
+
+  protected convertSourceRootPath(originalPath: string): string {
+    return originalPath?.startsWith(this.project.oldSourceRoot)
+      ? joinPathFragments(
+          this.project.newSourceRoot,
+          originalPath.replace(this.project.oldSourceRoot, '')
         )
       : originalPath;
   }
@@ -94,21 +104,15 @@ export abstract class Migrator {
       return;
     }
 
-    const workspaceConfig = readWorkspaceConfiguration(this.tree);
+    const nxJson = readNxJson(this.tree);
 
-    Object.keys(workspaceConfig.tasksRunnerOptions ?? {}).forEach(
-      (taskRunnerName) => {
-        const taskRunner = workspaceConfig.tasksRunnerOptions[taskRunnerName];
-        taskRunner.options.cacheableOperations = Array.from(
-          new Set([
-            ...(taskRunner.options.cacheableOperations ?? []),
-            ...targetNames,
-          ])
-        );
-      }
-    );
+    nxJson.targetDefaults ??= {};
+    for (const target of targetNames) {
+      nxJson.targetDefaults[target] ??= {};
+      nxJson.targetDefaults[target].cache ??= true;
+    }
 
-    updateWorkspaceConfiguration(this.tree, workspaceConfig);
+    updateNxJson(this.tree, nxJson);
   }
 
   // TODO(leo): This should be moved to BuilderMigrator once everything is split into builder migrators.
@@ -123,15 +127,6 @@ export abstract class Migrator {
       json.compilerOptions.outDir = `${projectOffsetFromRoot}dist/out-tsc`;
       return json;
     });
-  }
-
-  private convertSourceRootPath(originalPath: string): string {
-    return originalPath?.startsWith(this.project.oldSourceRoot)
-      ? joinPathFragments(
-          this.project.newSourceRoot,
-          originalPath.replace(this.project.oldSourceRoot, '')
-        )
-      : originalPath;
   }
 
   private getTargetValuesForOption(

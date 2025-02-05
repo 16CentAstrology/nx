@@ -2,7 +2,7 @@ import {
   createProjectRootMappings,
   findProjectForPath,
 } from './find-project-for-path';
-import { ProjectGraph } from 'nx/src/config/project-graph';
+import { ProjectGraph } from '../../config/project-graph';
 
 describe('get project utils', () => {
   let projectGraph: ProjectGraph;
@@ -43,7 +43,7 @@ describe('get project utils', () => {
             type: 'lib',
             data: {},
           },
-        },
+        } as any,
         dependencies: {
           'demo-app': [
             {

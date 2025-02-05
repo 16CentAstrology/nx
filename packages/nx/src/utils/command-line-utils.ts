@@ -5,14 +5,19 @@ import { output } from './output';
 import { NxJsonConfiguration } from '../config/nx-json';
 import { execSync } from 'child_process';
 import { ProjectGraph } from '../config/project-graph';
+import { workspaceRoot } from './workspace-root';
+import { readParallelFromArgsAndEnv } from '../command-line/yargs-utils/shared-options';
 
 export interface RawNxArgs extends NxArgs {
   prod?: boolean;
 }
 
 export interface NxArgs {
-  target?: string;
+  targets?: string[];
   configuration?: string;
+  /**
+   * @deprecated Custom task runners will no longer be supported in Nx 21. Use Nx Cloud or Nx Powerpack instead.
+   */
   runner?: string;
   parallel?: number;
   untracked?: boolean;
@@ -28,11 +33,38 @@ export interface NxArgs {
   plain?: boolean;
   projects?: string[];
   select?: string;
+  graph?: string | boolean;
   skipNxCache?: boolean;
+  skipRemoteCache?: boolean;
   outputStyle?: string;
   nxBail?: boolean;
   nxIgnoreCycles?: boolean;
   type?: string;
+  batch?: boolean;
+  excludeTaskDependencies?: boolean;
+  skipSync?: boolean;
+  sortRootTsconfigPaths?: boolean;
+}
+
+export function createOverrides(__overrides_unparsed__: string[] = []) {
+  let overrides: Record<string, any> =
+    yargsParser(__overrides_unparsed__, {
+      configuration: {
+        'camel-case-expansion': false,
+        'dot-notation': true,
+      },
+    }) || {};
+
+  if (!overrides._ || overrides._.length === 0) {
+    delete overrides._;
+  }
+
+  overrides.__overrides_unparsed__ = __overrides_unparsed__;
+  return overrides;
+}
+
+export function getBaseRef(nxJson: NxJsonConfiguration) {
+  return nxJson.defaultBase ?? nxJson.affected?.defaultBase ?? 'main';
 }
 
 export function splitArgsIntoNxArgsAndOverrides(
@@ -44,6 +76,13 @@ export function splitArgsIntoNxArgsAndOverrides(
   nxArgs: NxArgs;
   overrides: Arguments & { __overrides_unparsed__: string[] };
 } {
+  // this is to lerna case when this function is invoked imperatively
+  if (args['target'] && !args['targets']) {
+    args['targets'] = [args['target']];
+  }
+  delete args['target'];
+  delete args['t'];
+
   if (!args.__overrides_unparsed__ && args._) {
     // required for backwards compatibility
     args.__overrides_unparsed__ = args._;
@@ -57,28 +96,17 @@ export function splitArgsIntoNxArgsAndOverrides(
   }
 
   const nxArgs: RawNxArgs = args;
-  let overrides = yargsParser(args.__overrides_unparsed__ as string[], {
-    configuration: {
-      'camel-case-expansion': false,
-      'dot-notation': true,
-    },
-  });
 
-  if (!overrides._ || overrides._.length === 0) {
-    delete overrides._;
-  }
-
-  overrides.__overrides_unparsed__ = args.__overrides_unparsed__;
+  let overrides = createOverrides(args.__overrides_unparsed__);
   delete (nxArgs as any).$0;
   delete (nxArgs as any).__overrides_unparsed__;
 
   if (mode === 'run-many') {
-    if (!nxArgs.projects) {
-      nxArgs.projects = [];
-    } else {
-      nxArgs.projects = (args.projects as string)
-        .split(',')
-        .map((p: string) => p.trim());
+    const args = nxArgs as any;
+    if (!args.projects) {
+      args.projects = [];
+    } else if (typeof args.projects === 'string') {
+      args.projects = args.projects.split(',');
     }
   }
 
@@ -103,22 +131,7 @@ export function splitArgsIntoNxArgsAndOverrides(
       });
     }
 
-    if (
-      !nxArgs.files &&
-      !nxArgs.uncommitted &&
-      !nxArgs.untracked &&
-      !nxArgs.base &&
-      !nxArgs.head &&
-      !nxArgs.all &&
-      overrides._ &&
-      overrides._.length >= 2
-    ) {
-      throw new Error(
-        `Nx no longer supports using positional arguments for base and head. Please use --base and --head instead.`
-      );
-    }
-
-    // Allow setting base and head via environment variables (lower priority then direct command arguments)
+    // Allow setting base and head via environment variables (lower priority than direct command arguments)
     if (!nxArgs.base && process.env.NX_BASE) {
       nxArgs.base = process.env.NX_BASE;
       if (options.printWarnings) {
@@ -141,7 +154,7 @@ export function splitArgsIntoNxArgsAndOverrides(
     }
 
     if (!nxArgs.base) {
-      nxArgs.base = nxJson.affected?.defaultBase || 'main';
+      nxArgs.base = getBaseRef(nxJson);
 
       // No user-provided arguments to set the affected criteria, so inform the user of the defaults being used
       if (
@@ -159,27 +172,75 @@ export function splitArgsIntoNxArgsAndOverrides(
         });
       }
     }
+
+    if (nxArgs.base) {
+      nxArgs.base = getMergeBase(nxArgs.base, nxArgs.head);
+    }
+  }
+
+  if (typeof args.exclude === 'string') {
+    nxArgs.exclude = args.exclude.split(',');
   }
 
   if (!nxArgs.skipNxCache) {
-    nxArgs.skipNxCache = process.env.NX_SKIP_NX_CACHE === 'true';
+    nxArgs.skipNxCache =
+      process.env.NX_SKIP_NX_CACHE === 'true' ||
+      process.env.NX_DISABLE_NX_CACHE === 'true';
   }
 
-  if (args['parallel'] === 'false' || args['parallel'] === false) {
-    nxArgs['parallel'] = 1;
-  } else if (
-    args['parallel'] === 'true' ||
-    args['parallel'] === true ||
-    args['parallel'] === ''
-  ) {
-    nxArgs['parallel'] = Number(
-      nxArgs['maxParallel'] || nxArgs['max-parallel'] || 3
-    );
-  } else if (args['parallel'] !== undefined) {
-    nxArgs['parallel'] = Number(args['parallel']);
+  if (!nxArgs.skipRemoteCache) {
+    nxArgs.skipRemoteCache =
+      process.env.NX_DISABLE_REMOTE_CACHE === 'true' ||
+      process.env.NX_SKIP_REMOTE_CACHE === 'true';
   }
+
+  normalizeNxArgsRunner(nxArgs, nxJson, options);
+
+  nxArgs['parallel'] = readParallelFromArgsAndEnv(args);
 
   return { nxArgs, overrides } as any;
+}
+
+function normalizeNxArgsRunner(
+  nxArgs: RawNxArgs,
+  nxJson: NxJsonConfiguration<string[] | '*'>,
+  options: { printWarnings: boolean }
+) {
+  if (!nxArgs.runner) {
+    const envKey = 'NX_TASKS_RUNNER';
+    const runner = process.env[envKey];
+    if (runner) {
+      const runnerExists = nxJson.tasksRunnerOptions?.[runner];
+      if (options.printWarnings) {
+        if (runnerExists) {
+          output.note({
+            title: `No explicit --runner argument provided, but found environment variable ${envKey} so using its value: ${output.bold(
+              `${runner}`
+            )}`,
+          });
+        } else if (
+          nxArgs.verbose ||
+          process.env.NX_VERBOSE_LOGGING === 'true'
+        ) {
+          output.warn({
+            title: `Could not find ${output.bold(
+              `${runner}`
+            )} within \`nx.json\` tasksRunnerOptions.`,
+            bodyLines: [
+              `${output.bold(`${runner}`)} was set by ${envKey}`,
+              ``,
+              `To suppress this message, either:`,
+              `  - provide a valid task runner with --runner`,
+              `  - ensure NX_TASKS_RUNNER matches a task runner defined in nx.json`,
+            ],
+          });
+        }
+      }
+      if (runnerExists) {
+        nxArgs.runner = runner;
+      }
+    }
+  }
 }
 
 export function parseFiles(options: NxArgs): { files: string[] } {
@@ -215,37 +276,51 @@ export function parseFiles(options: NxArgs): { files: string[] } {
 }
 
 function getUncommittedFiles(): string[] {
-  return parseGitOutput(`git diff --name-only --relative HEAD .`);
+  return parseGitOutput(`git diff --name-only --no-renames --relative HEAD .`);
 }
-
-``;
 
 function getUntrackedFiles(): string[] {
   return parseGitOutput(`git ls-files --others --exclude-standard`);
 }
 
-function getFilesUsingBaseAndHead(base: string, head: string): string[] {
-  let mergeBase: string;
+function getMergeBase(base: string, head: string = 'HEAD') {
   try {
-    mergeBase = execSync(`git merge-base "${base}" "${head}"`, {
+    return execSync(`git merge-base "${base}" "${head}"`, {
       maxBuffer: TEN_MEGABYTES,
+      cwd: workspaceRoot,
+      stdio: 'pipe',
+      windowsHide: false,
     })
       .toString()
       .trim();
   } catch {
-    mergeBase = execSync(`git merge-base --fork-point "${base}" "${head}"`, {
-      maxBuffer: TEN_MEGABYTES,
-    })
-      .toString()
-      .trim();
+    try {
+      return execSync(`git merge-base --fork-point "${base}" "${head}"`, {
+        maxBuffer: TEN_MEGABYTES,
+        cwd: workspaceRoot,
+        stdio: 'pipe',
+        windowsHide: false,
+      })
+        .toString()
+        .trim();
+    } catch {
+      return base;
+    }
   }
+}
+
+function getFilesUsingBaseAndHead(base: string, head: string): string[] {
   return parseGitOutput(
-    `git diff --name-only --relative "${mergeBase}" "${head}"`
+    `git diff --name-only --no-renames --relative "${base}" "${head}"`
   );
 }
 
 function parseGitOutput(command: string): string[] {
-  return execSync(command, { maxBuffer: TEN_MEGABYTES })
+  return execSync(command, {
+    maxBuffer: TEN_MEGABYTES,
+    cwd: workspaceRoot,
+    windowsHide: false,
+  })
     .toString('utf-8')
     .split('\n')
     .map((a) => a.trim())
@@ -257,4 +332,10 @@ export function getProjectRoots(
   { nodes }: ProjectGraph
 ): string[] {
   return projectNames.map((name) => nodes[name].data.root);
+}
+
+export function readGraphFileFromGraphArg({ graph }: Pick<NxArgs, 'graph'>) {
+  return typeof graph === 'string' && graph !== 'true' && graph !== ''
+    ? graph
+    : undefined;
 }

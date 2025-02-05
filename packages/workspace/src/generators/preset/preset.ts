@@ -1,152 +1,357 @@
-import {
-  addDependenciesToPackageJson,
-  formatFiles,
-  installPackagesTask,
-  names,
-  readWorkspaceConfiguration,
-  Tree,
-  updateWorkspaceConfiguration,
-} from '@nrwl/devkit';
+import { installPackagesTask, names, readNxJson, Tree } from '@nx/devkit';
 import { Schema } from './schema';
-import { insertStatement } from '../utils/insert-statement';
 import { Preset } from '../utils/presets';
+import { join } from 'path';
 
 export async function presetGenerator(tree: Tree, options: Schema) {
-  options = normalizeOptions(options);
-  await createPreset(tree, options);
-  await formatFiles(tree);
-  return () => {
+  const presetTask = await createPreset(tree, options);
+  return async () => {
     installPackagesTask(tree);
+    if (presetTask) await presetTask();
   };
 }
+
 export default presetGenerator;
 
 async function createPreset(tree: Tree, options: Schema) {
-  if (options.preset === Preset.Empty || options.preset === Preset.Apps) {
+  const nxJson = readNxJson(tree);
+  const addPlugin =
+    process.env.NX_ADD_PLUGINS !== 'false' &&
+    nxJson.useInferencePlugins !== false;
+
+  if (options.preset === Preset.Apps) {
     return;
   } else if (options.preset === Preset.AngularMonorepo) {
     const {
       applicationGenerator: angularApplicationGenerator,
-    } = require('@nrwl' + '/angular/generators');
+    } = require('@nx' + '/angular/generators');
 
-    await angularApplicationGenerator(tree, {
+    return angularApplicationGenerator(tree, {
       name: options.name,
+      directory: join('apps', options.name),
       style: options.style,
       linter: options.linter,
-      standaloneConfig: options.standaloneConfig,
+      standalone: options.standaloneApi,
+      routing: options.routing,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner: options.unitTestRunner,
+      bundler: options.bundler,
+      ssr: options.ssr,
+      serverRouting: options.serverRouting,
+      prefix: options.prefix,
+      nxCloudToken: options.nxCloudToken,
     });
   } else if (options.preset === Preset.AngularStandalone) {
     const {
       applicationGenerator: angularApplicationGenerator,
-    } = require('@nrwl' + '/angular/generators');
+    } = require('@nx' + '/angular/generators');
 
-    await angularApplicationGenerator(tree, {
+    return angularApplicationGenerator(tree, {
       name: options.name,
+      directory: '.',
       style: options.style,
       linter: options.linter,
-      standaloneConfig: options.standaloneConfig,
+      routing: options.routing,
       rootProject: true,
+      standalone: options.standaloneApi,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner: options.unitTestRunner,
+      bundler: options.bundler,
+      ssr: options.ssr,
+      serverRouting: options.serverRouting,
+      prefix: options.prefix,
+      nxCloudToken: options.nxCloudToken,
     });
   } else if (options.preset === Preset.ReactMonorepo) {
-    const {
-      applicationGenerator: reactApplicationGenerator,
-    } = require('@nrwl' + '/react');
+    const { applicationGenerator: reactApplicationGenerator } = require('@nx' +
+      '/react');
 
-    await reactApplicationGenerator(tree, {
+    return reactApplicationGenerator(tree, {
       name: options.name,
+      directory: join('apps', options.name),
       style: options.style,
       linter: options.linter,
-      standaloneConfig: options.standaloneConfig,
+      bundler: options.bundler ?? 'webpack',
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner:
+        options.unitTestRunner ??
+        (options.bundler === 'vite' ? 'vitest' : 'jest'),
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
+      useTsSolution: options.workspaces,
+      formatter: options.formatter,
     });
   } else if (options.preset === Preset.ReactStandalone) {
-    const {
-      applicationGenerator: reactApplicationGenerator,
-    } = require('@nrwl' + '/react');
+    const { applicationGenerator: reactApplicationGenerator } = require('@nx' +
+      '/react');
 
-    await reactApplicationGenerator(tree, {
+    const bundler = options.bundler ?? 'vite';
+
+    return reactApplicationGenerator(tree, {
       name: options.name,
+      directory: '.',
       style: options.style,
       linter: options.linter,
-      standaloneConfig: options.standaloneConfig,
       rootProject: true,
-      bundler: 'vite',
-      e2eTestRunner: 'none',
-      unitTestRunner: 'vitest',
+      bundler,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner:
+        options.unitTestRunner ?? (bundler === 'vite' ? 'vitest' : 'jest'),
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
+      formatter: options.formatter,
+    });
+  } else if (options.preset === Preset.RemixMonorepo) {
+    const { applicationGenerator: remixApplicationGenerator } = require('@nx' +
+      '/remix/generators');
+
+    return remixApplicationGenerator(tree, {
+      name: options.name,
+      directory: join('apps', options.name),
+      linter: options.linter,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner: options.unitTestRunner ?? 'vitest',
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
+      useTsSolution: options.workspaces,
+      formatter: options.formatter,
+    });
+  } else if (options.preset === Preset.RemixStandalone) {
+    const { applicationGenerator: remixApplicationGenerator } = require('@nx' +
+      '/remix/generators');
+
+    return remixApplicationGenerator(tree, {
+      name: options.name,
+      directory: '.',
+      linter: options.linter,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      rootProject: true,
+      unitTestRunner: options.unitTestRunner ?? 'vitest',
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
+      formatter: options.formatter,
+    });
+  } else if (options.preset === Preset.VueMonorepo) {
+    const { applicationGenerator: vueApplicationGenerator } = require('@nx' +
+      '/vue');
+
+    return vueApplicationGenerator(tree, {
+      name: options.name,
+      directory: join('apps', options.name),
+      style: options.style,
+      linter: options.linter,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner: options.unitTestRunner,
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
+      useTsSolution: options.workspaces,
+      formatter: options.formatter,
+    });
+  } else if (options.preset === Preset.VueStandalone) {
+    const { applicationGenerator: vueApplicationGenerator } = require('@nx' +
+      '/vue');
+
+    return vueApplicationGenerator(tree, {
+      name: options.name,
+      directory: '.',
+      style: options.style,
+      linter: options.linter,
+      rootProject: true,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner: options.unitTestRunner ?? 'vitest',
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
+    });
+  } else if (options.preset === Preset.Nuxt) {
+    const { applicationGenerator: nuxtApplicationGenerator } = require('@nx' +
+      '/nuxt');
+
+    return nuxtApplicationGenerator(tree, {
+      name: options.name,
+      directory: join('apps', options.name),
+      style: options.style,
+      linter: options.linter,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner: options.unitTestRunner,
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
+      useTsSolution: options.workspaces,
+      formatter: options.formatter,
+    });
+  } else if (options.preset === Preset.NuxtStandalone) {
+    const { applicationGenerator: nuxtApplicationGenerator } = require('@nx' +
+      '/nuxt');
+
+    return nuxtApplicationGenerator(tree, {
+      name: options.name,
+      directory: '.',
+      style: options.style,
+      linter: options.linter,
+      rootProject: true,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner: options.unitTestRunner ?? 'vitest',
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
     });
   } else if (options.preset === Preset.NextJs) {
-    const { applicationGenerator: nextApplicationGenerator } = require('@nrwl' +
+    const { applicationGenerator: nextApplicationGenerator } = require('@nx' +
       '/next');
 
-    await nextApplicationGenerator(tree, {
+    return nextApplicationGenerator(tree, {
       name: options.name,
+      directory: join('apps', options.name),
       style: options.style,
       linter: options.linter,
-      standaloneConfig: options.standaloneConfig,
+      appDir: options.nextAppDir,
+      src: options.nextSrcDir,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner: options.unitTestRunner,
+      addPlugin,
+      useTsSolution: options.workspaces,
+      formatter: options.formatter,
+    });
+  } else if (options.preset === Preset.NextJsStandalone) {
+    const { applicationGenerator: nextApplicationGenerator } = require('@nx' +
+      '/next');
+    return nextApplicationGenerator(tree, {
+      name: options.name,
+      directory: '.',
+      style: options.style,
+      linter: options.linter,
+      appDir: options.nextAppDir,
+      src: options.nextSrcDir,
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      unitTestRunner: options.unitTestRunner,
+      rootProject: true,
+      addPlugin,
+      formatter: options.formatter,
     });
   } else if (options.preset === Preset.WebComponents) {
-    const { applicationGenerator: webApplicationGenerator } = require('@nrwl' +
+    const { applicationGenerator: webApplicationGenerator } = require('@nx' +
       '/web');
 
-    await webApplicationGenerator(tree, {
+    return webApplicationGenerator(tree, {
       name: options.name,
+      directory: join('apps', options.name),
       style: options.style,
       linter: options.linter,
-      standaloneConfig: options.standaloneConfig,
       bundler: 'vite',
+      e2eTestRunner: options.e2eTestRunner ?? 'playwright',
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
     });
   } else if (options.preset === Preset.Nest) {
-    const { applicationGenerator: nestApplicationGenerator } = require('@nrwl' +
+    const { applicationGenerator: nestApplicationGenerator } = require('@nx' +
       '/nest');
 
-    await nestApplicationGenerator(tree, {
+    return nestApplicationGenerator(tree, {
       name: options.name,
+      directory: join('apps', options.name),
       linter: options.linter,
+      e2eTestRunner: options.e2eTestRunner ?? 'jest',
+      unitTestRunner: options.unitTestRunner,
+      addPlugin,
+      useTsSolution: options.workspaces,
+      formatter: options.formatter,
     });
   } else if (options.preset === Preset.Express) {
     const {
       applicationGenerator: expressApplicationGenerator,
-    } = require('@nrwl' + '/express');
-    await expressApplicationGenerator(tree, {
+    } = require('@nx' + '/express');
+    return expressApplicationGenerator(tree, {
       name: options.name,
+      directory: join('apps', options.name),
       linter: options.linter,
-      standaloneConfig: options.standaloneConfig,
+      e2eTestRunner: options.e2eTestRunner ?? 'jest',
+      unitTestRunner: options.unitTestRunner,
+      addPlugin,
+      useTsSolution: options.workspaces,
+      formatter: options.formatter,
     });
   } else if (options.preset === Preset.ReactNative) {
-    const { reactNativeApplicationGenerator } = require('@nrwl' +
+    const { reactNativeApplicationGenerator } = require('@nx' +
       '/react-native');
-    await reactNativeApplicationGenerator(tree, {
+    return reactNativeApplicationGenerator(tree, {
       name: options.name,
+      directory: join('apps', options.name),
       linter: options.linter,
-      standaloneConfig: options.standaloneConfig,
-      e2eTestRunner: 'detox',
+      e2eTestRunner: options.e2eTestRunner ?? 'detox',
+      unitTestRunner: options.unitTestRunner,
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
+      bundler: options.bundler ?? 'webpack',
+      useTsSolution: options.workspaces,
+      formatter: options.formatter,
     });
   } else if (options.preset === Preset.Expo) {
-    const { expoApplicationGenerator } = require('@nrwl' + '/expo');
-    await expoApplicationGenerator(tree, {
+    const { expoApplicationGenerator } = require('@nx' + '/expo');
+    return expoApplicationGenerator(tree, {
       name: options.name,
+      directory: join('apps', options.name),
       linter: options.linter,
-      standaloneConfig: options.standaloneConfig,
-      e2eTestRunner: 'detox',
+      e2eTestRunner: options.e2eTestRunner ?? 'detox',
+      unitTestRunner: options.unitTestRunner,
+      addPlugin,
+      nxCloudToken: options.nxCloudToken,
+      useTsSolution: options.workspaces,
+      formatter: options.formatter,
     });
   } else if (options.preset === Preset.TS) {
-    const c = readWorkspaceConfiguration(tree);
-    c.workspaceLayout = {
-      appsDir: 'packages',
-      libsDir: 'packages',
-    };
-    updateWorkspaceConfiguration(tree, c);
+    const { initGenerator } = require('@nx' + '/js');
+    return initGenerator(tree, {
+      formatter: options.formatter,
+      addTsPlugin:
+        process.env.NX_ADD_PLUGINS !== 'false' &&
+        process.env.NX_ADD_TS_PLUGIN !== 'false',
+    });
+  } else if (options.preset === Preset.TsStandalone) {
+    const { libraryGenerator } = require('@nx' + '/js');
+    return libraryGenerator(tree, {
+      name: options.name,
+      directory: '.',
+      bundler: 'tsc',
+      unitTestRunner: 'vitest',
+      testEnvironment: 'node',
+      js: options.js,
+      rootProject: true,
+      addPlugin,
+    });
+  } else if (options.preset === Preset.NodeStandalone) {
+    const { applicationGenerator: nodeApplicationGenerator } = require('@nx' +
+      '/node');
+    const bundler = options.bundler === 'webpack' ? 'webpack' : 'esbuild';
+    return nodeApplicationGenerator(tree, {
+      bundler,
+      name: options.name,
+      directory: '.',
+      linter: options.linter,
+      standaloneConfig: options.standaloneConfig,
+      framework: options.framework,
+      docker: options.docker,
+      rootProject: true,
+      e2eTestRunner: options.e2eTestRunner ?? 'jest',
+      unitTestRunner: options.unitTestRunner,
+      addPlugin,
+    });
+  } else if (options.preset === Preset.NodeMonorepo) {
+    const { applicationGenerator: nodeApplicationGenerator } = require('@nx' +
+      '/node');
+    const bundler = options.bundler === 'webpack' ? 'webpack' : 'esbuild';
+    return nodeApplicationGenerator(tree, {
+      bundler,
+      name: options.name,
+      directory: join('apps', options.name),
+      linter: options.linter,
+      framework: options.framework,
+      docker: options.docker,
+      rootProject: false,
+      e2eTestRunner: options.e2eTestRunner ?? 'jest',
+      unitTestRunner: options.unitTestRunner,
+      addPlugin,
+      useTsSolution: options.workspaces,
+      formatter: options.formatter,
+    });
   } else {
     throw new Error(`Invalid preset ${options.preset}`);
   }
-}
-
-function addPolyfills(host: Tree, polyfillsPath: string, polyfills: string[]) {
-  for (const polyfill of polyfills) {
-    insertStatement(host, polyfillsPath, `import '${polyfill}';\n`);
-  }
-}
-
-function normalizeOptions(options: Schema): Schema {
-  options.name = names(options.name).fileName;
-  return options;
 }

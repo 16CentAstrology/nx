@@ -1,8 +1,12 @@
-import { ExecutorContext, names } from '@nrwl/devkit';
+import {
+  ExecutorContext,
+  joinPathFragments,
+  names,
+  offsetFromRoot,
+} from '@nx/devkit';
 import { ChildProcess, fork } from 'child_process';
-import { join } from 'path';
+import { resolve as pathResolve } from 'path';
 
-import { ensureNodeModulesSymlink } from '../../utils/ensure-node-modules-symlink';
 import { ExportExecutorSchema } from './schema';
 
 export interface ExpoExportOutput {
@@ -15,12 +19,11 @@ export default async function* exportExecutor(
   options: ExportExecutorSchema,
   context: ExecutorContext
 ): AsyncGenerator<ExpoExportOutput> {
-  const projectRoot = context.workspace.projects[context.projectName].root;
-  ensureNodeModulesSymlink(context.root, projectRoot);
+  const projectRoot =
+    context.projectsConfigurations.projects[context.projectName].root;
 
   try {
     await exportAsync(context.root, projectRoot, options);
-
     yield {
       success: true,
     };
@@ -38,13 +41,9 @@ function exportAsync(
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     childProcess = fork(
-      join(workspaceRoot, './node_modules/@expo/cli/build/bin/cli'),
-      [
-        `export${options.bundler === 'webpack' ? ':web' : ''}`,
-        '.',
-        ...createExportOptions(options),
-      ],
-      { cwd: join(workspaceRoot, projectRoot) }
+      require.resolve('@expo/cli/build/bin/cli'),
+      [`export`, ...createExportOptions(options, projectRoot)],
+      { cwd: pathResolve(workspaceRoot, projectRoot), env: process.env }
     );
 
     // Ensure the child process is killed when the parent exits
@@ -64,19 +63,34 @@ function exportAsync(
   });
 }
 
-const nxOptions = ['bundler'];
+const nxOptions = ['bundler', 'interactive']; // interactive is passed in by e2e tests
 // options from https://github.com/expo/expo/blob/main/packages/@expo/cli/src/export/index.ts
-function createExportOptions(options: ExportExecutorSchema) {
+export function createExportOptions(
+  options: ExportExecutorSchema,
+  projectRoot: string
+) {
   return Object.keys(options).reduce((acc, k) => {
     if (!nxOptions.includes(k)) {
       const v = options[k];
-      if (typeof v === 'boolean') {
-        if (v === true) {
-          // when true, does not need to pass the value true, just need to pass the flag in kebob case
-          acc.push(`--${names(k).fileName}`);
-        }
-      } else {
-        acc.push(`--${names(k).fileName}`, v);
+      switch (k) {
+        case 'outputDir':
+          const path = joinPathFragments(offsetFromRoot(projectRoot), v); // need to add offset for the outputDir
+          acc.push('--output-dir', path);
+          break;
+        case 'minify':
+          if (v === false) {
+            acc.push('--no-minify'); // cli only accpets --no-minify
+          }
+          break;
+        default:
+          if (typeof v === 'boolean') {
+            if (v === true) {
+              // when true, does not need to pass the value true, just need to pass the flag in kebob case
+              acc.push(`--${names(k).fileName}`);
+            }
+          } else {
+            acc.push(`--${names(k).fileName}`, v);
+          }
       }
     }
     return acc;

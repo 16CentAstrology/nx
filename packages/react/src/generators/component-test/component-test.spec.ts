@@ -1,24 +1,26 @@
-import { assertMinimumCypressVersion } from '@nrwl/cypress/src/utils/cypress-version';
-import { Tree } from '@nrwl/devkit';
-import { createTreeWithEmptyV1Workspace } from '@nrwl/devkit/testing';
-import { Linter } from '@nrwl/linter';
+import 'nx/src/internal-testing-utils/mock-project-graph';
+
+import { assertMinimumCypressVersion } from '@nx/cypress/src/utils/cypress-version';
+import { Tree } from '@nx/devkit';
+import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
+import { Linter } from '@nx/eslint';
 import libraryGenerator from '../library/library';
 import { componentTestGenerator } from './component-test';
 
-jest.mock('@nrwl/cypress/src/utils/cypress-version');
+jest.mock('@nx/cypress/src/utils/cypress-version');
 describe(componentTestGenerator.name, () => {
   let tree: Tree;
   let mockedAssertMinimumCypressVersion: jest.Mock<
     ReturnType<typeof assertMinimumCypressVersion>
   > = assertMinimumCypressVersion as never;
   beforeEach(() => {
-    tree = createTreeWithEmptyV1Workspace();
+    tree = createTreeWithEmptyWorkspace();
   });
   it('should create component test for tsx files', async () => {
     mockedAssertMinimumCypressVersion.mockReturnValue();
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -31,14 +33,14 @@ describe(componentTestGenerator.name, () => {
       componentPath: 'lib/some-lib.tsx',
     });
 
-    expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+    expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
   });
 
   it('should create component test for js files', async () => {
     mockedAssertMinimumCypressVersion.mockReturnValue();
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -52,27 +54,27 @@ describe(componentTestGenerator.name, () => {
       componentPath: 'lib/some-lib.js',
     });
 
-    expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.js')).toBeTruthy();
+    expect(tree.exists('some-lib/src/lib/some-lib.cy.js')).toBeTruthy();
   });
 
   it('should not overwrite exising component test', async () => {
     mockedAssertMinimumCypressVersion.mockReturnValue();
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
       unitTestRunner: 'none',
       component: true,
     });
-    tree.write('libs/some-lib/src/lib/some-lib.cy.tsx', 'existing content');
+    tree.write('some-lib/src/lib/some-lib.cy.tsx', 'existing content');
     await componentTestGenerator(tree, {
       project: 'some-lib',
       componentPath: 'lib/some-lib.tsx',
     });
 
-    expect(tree.read('libs/some-lib/src/lib/some-lib.cy.tsx', 'utf-8')).toEqual(
+    expect(tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')).toEqual(
       'existing content'
     );
   });
@@ -81,7 +83,7 @@ describe(componentTestGenerator.name, () => {
     mockedAssertMinimumCypressVersion.mockReturnValue();
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -101,7 +103,7 @@ describe(componentTestGenerator.name, () => {
     mockedAssertMinimumCypressVersion.mockReturnValue();
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -111,10 +113,10 @@ describe(componentTestGenerator.name, () => {
 
     await componentTestGenerator(tree, {
       project: 'some-lib',
-      componentPath: 'libs/some-lib/src/lib/some-lib.tsx',
+      componentPath: 'some-lib/src/lib/some-lib.tsx',
     });
 
-    expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+    expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
   });
 
   describe('multiple components per file', () => {
@@ -122,7 +124,7 @@ describe(componentTestGenerator.name, () => {
       mockedAssertMinimumCypressVersion.mockReturnValue();
       await libraryGenerator(tree, {
         linter: Linter.EsLint,
-        name: 'some-lib',
+        directory: 'some-lib',
         skipFormat: true,
         skipTsConfig: false,
         style: 'scss',
@@ -131,9 +133,9 @@ describe(componentTestGenerator.name, () => {
       });
 
       tree.write(
-        'libs/some-lib/src/lib/some-lib.tsx',
+        'some-lib/src/lib/some-lib.tsx',
         `
-${tree.read('libs/some-lib/src/lib/some-lib.tsx')}
+${tree.read('some-lib/src/lib/some-lib.tsx')}
 
 /* eslint-disable-next-line */
 export interface AnotherCmpProps {
@@ -150,19 +152,19 @@ export function AnotherCmp(props: AnotherCmpProps) {
       );
       await componentTestGenerator(tree, {
         project: 'some-lib',
-        componentPath: 'libs/some-lib/src/lib/some-lib.tsx',
+        componentPath: 'some-lib/src/lib/some-lib.tsx',
       });
 
-      expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+      expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
       expect(
-        tree.read('libs/some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
+        tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
       ).toMatchSnapshot();
     });
     it('should handle no props', async () => {
       mockedAssertMinimumCypressVersion.mockReturnValue();
       await libraryGenerator(tree, {
         linter: Linter.EsLint,
-        name: 'some-lib',
+        directory: 'some-lib',
         skipFormat: true,
         skipTsConfig: false,
         style: 'scss',
@@ -171,9 +173,9 @@ export function AnotherCmp(props: AnotherCmpProps) {
       });
 
       tree.write(
-        'libs/some-lib/src/lib/some-lib.tsx',
+        'some-lib/src/lib/some-lib.tsx',
         `
-${tree.read('libs/some-lib/src/lib/some-lib.tsx')}
+${tree.read('some-lib/src/lib/some-lib.tsx')}
 
 export function AnotherCmp() {
  return <button>AnotherCmp</button>;
@@ -182,19 +184,19 @@ export function AnotherCmp() {
       );
       await componentTestGenerator(tree, {
         project: 'some-lib',
-        componentPath: 'libs/some-lib/src/lib/some-lib.tsx',
+        componentPath: 'some-lib/src/lib/some-lib.tsx',
       });
 
-      expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+      expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
       expect(
-        tree.read('libs/some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
+        tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
       ).toMatchSnapshot();
     });
     it('should handle default export', async () => {
       mockedAssertMinimumCypressVersion.mockReturnValue();
       await libraryGenerator(tree, {
         linter: Linter.EsLint,
-        name: 'some-lib',
+        directory: 'some-lib',
         skipFormat: true,
         skipTsConfig: false,
         style: 'scss',
@@ -203,7 +205,7 @@ export function AnotherCmp() {
       });
 
       tree.write(
-        'libs/some-lib/src/lib/some-lib.tsx',
+        'some-lib/src/lib/some-lib.tsx',
         `
 /* eslint-disable-next-line */
 export interface AnotherCmpProps {
@@ -224,12 +226,12 @@ export function AnotherCmp2() {
       );
       await componentTestGenerator(tree, {
         project: 'some-lib',
-        componentPath: 'libs/some-lib/src/lib/some-lib.tsx',
+        componentPath: 'some-lib/src/lib/some-lib.tsx',
       });
 
-      expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+      expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
       expect(
-        tree.read('libs/some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
+        tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
       ).toMatchSnapshot();
     });
 
@@ -237,7 +239,7 @@ export function AnotherCmp2() {
       mockedAssertMinimumCypressVersion.mockReturnValue();
       await libraryGenerator(tree, {
         linter: Linter.EsLint,
-        name: 'some-lib',
+        directory: 'some-lib',
         skipFormat: true,
         skipTsConfig: false,
         style: 'scss',
@@ -246,7 +248,7 @@ export function AnotherCmp2() {
       });
 
       tree.write(
-        'libs/some-lib/src/lib/some-lib.tsx',
+        'some-lib/src/lib/some-lib.tsx',
         `
 /* eslint-disable-next-line */
 export interface AnotherCmpProps {
@@ -267,12 +269,12 @@ export function AnotherCmp2() {
       );
       await componentTestGenerator(tree, {
         project: 'some-lib',
-        componentPath: 'libs/some-lib/src/lib/some-lib.tsx',
+        componentPath: 'some-lib/src/lib/some-lib.tsx',
       });
 
-      expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+      expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
       expect(
-        tree.read('libs/some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
+        tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
       ).toMatchSnapshot();
     });
   });
@@ -282,7 +284,7 @@ export function AnotherCmp2() {
       mockedAssertMinimumCypressVersion.mockReturnValue();
       await libraryGenerator(tree, {
         linter: Linter.EsLint,
-        name: 'some-lib',
+        directory: 'some-lib',
         skipFormat: true,
         skipTsConfig: false,
         style: 'scss',
@@ -291,7 +293,7 @@ export function AnotherCmp2() {
       });
 
       tree.write(
-        'libs/some-lib/src/lib/some-lib.tsx',
+        'some-lib/src/lib/some-lib.tsx',
         `
 /* eslint-disable-next-line */
 export interface AnotherCmpProps {
@@ -308,41 +310,20 @@ export function AnotherCmp(props: AnotherCmpProps) {
       );
       await componentTestGenerator(tree, {
         project: 'some-lib',
-        componentPath: 'libs/some-lib/src/lib/some-lib.tsx',
+        componentPath: 'some-lib/src/lib/some-lib.tsx',
       });
 
-      expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+      expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
       expect(
-        tree.read('libs/some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
+        tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
       ).toMatchSnapshot();
     });
-    it('should handle no props', async () => {
-      // this is the default behavior of the library component generator
+
+    it('should handle props with inline type', async () => {
       mockedAssertMinimumCypressVersion.mockReturnValue();
       await libraryGenerator(tree, {
         linter: Linter.EsLint,
-        name: 'some-lib',
-        skipFormat: true,
-        skipTsConfig: false,
-        style: 'scss',
-        unitTestRunner: 'none',
-        component: true,
-      });
-      await componentTestGenerator(tree, {
-        project: 'some-lib',
-        componentPath: 'libs/some-lib/src/lib/some-lib.tsx',
-      });
-
-      expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
-      expect(
-        tree.read('libs/some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
-      ).toMatchSnapshot();
-    });
-    it('should handle default export', async () => {
-      mockedAssertMinimumCypressVersion.mockReturnValue();
-      await libraryGenerator(tree, {
-        linter: Linter.EsLint,
-        name: 'some-lib',
+        directory: 'some-lib',
         skipFormat: true,
         skipTsConfig: false,
         style: 'scss',
@@ -351,7 +332,99 @@ export function AnotherCmp(props: AnotherCmpProps) {
       });
 
       tree.write(
-        'libs/some-lib/src/lib/some-lib.tsx',
+        'some-lib/src/lib/some-lib.tsx',
+        `export function AnotherCmp(props: {
+  handleClick: () => void;
+  text: string;
+  count: number;
+  isOkay: boolean;
+}) {
+ return <button onClick='{handleClick}'>{props.text}</button>;
+}
+`
+      );
+      await componentTestGenerator(tree, {
+        project: 'some-lib',
+        componentPath: 'some-lib/src/lib/some-lib.tsx',
+      });
+
+      expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+      expect(
+        tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
+      ).toMatchSnapshot();
+    });
+
+    it('should handle destructured props with no type', async () => {
+      mockedAssertMinimumCypressVersion.mockReturnValue();
+      await libraryGenerator(tree, {
+        linter: Linter.EsLint,
+        directory: 'some-lib',
+        skipFormat: true,
+        skipTsConfig: false,
+        style: 'scss',
+        unitTestRunner: 'none',
+        component: true,
+      });
+
+      tree.write(
+        'some-lib/src/lib/some-lib.tsx',
+        `export function AnotherCmp({
+  handleClick,
+  text,
+  count,
+  isOkay,
+}) {
+ return <button onClick='{handleClick}'>{props.text}</button>;
+}
+`
+      );
+      await componentTestGenerator(tree, {
+        project: 'some-lib',
+        componentPath: 'some-lib/src/lib/some-lib.tsx',
+      });
+
+      expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+      expect(
+        tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
+      ).toMatchSnapshot();
+    });
+
+    it('should handle no props', async () => {
+      // this is the default behavior of the library component generator
+      mockedAssertMinimumCypressVersion.mockReturnValue();
+      await libraryGenerator(tree, {
+        linter: Linter.EsLint,
+        directory: 'some-lib',
+        skipFormat: true,
+        skipTsConfig: false,
+        style: 'scss',
+        unitTestRunner: 'none',
+        component: true,
+      });
+      await componentTestGenerator(tree, {
+        project: 'some-lib',
+        componentPath: 'some-lib/src/lib/some-lib.tsx',
+      });
+
+      expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+      expect(
+        tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
+      ).toMatchSnapshot();
+    });
+    it('should handle default export', async () => {
+      mockedAssertMinimumCypressVersion.mockReturnValue();
+      await libraryGenerator(tree, {
+        linter: Linter.EsLint,
+        directory: 'some-lib',
+        skipFormat: true,
+        skipTsConfig: false,
+        style: 'scss',
+        unitTestRunner: 'none',
+        component: true,
+      });
+
+      tree.write(
+        'some-lib/src/lib/some-lib.tsx',
         `
 /* eslint-disable-next-line */
 export interface AnotherCmpProps {
@@ -368,19 +441,19 @@ export default function AnotherCmp(props: AnotherCmpProps) {
       );
       await componentTestGenerator(tree, {
         project: 'some-lib',
-        componentPath: 'libs/some-lib/src/lib/some-lib.tsx',
+        componentPath: 'some-lib/src/lib/some-lib.tsx',
       });
 
-      expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+      expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
       expect(
-        tree.read('libs/some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
+        tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
       ).toMatchSnapshot();
     });
     it('should handle named exports', async () => {
       mockedAssertMinimumCypressVersion.mockReturnValue();
       await libraryGenerator(tree, {
         linter: Linter.EsLint,
-        name: 'some-lib',
+        directory: 'some-lib',
         skipFormat: true,
         skipTsConfig: false,
         style: 'scss',
@@ -389,7 +462,7 @@ export default function AnotherCmp(props: AnotherCmpProps) {
       });
 
       tree.write(
-        'libs/some-lib/src/lib/some-lib.tsx',
+        'some-lib/src/lib/some-lib.tsx',
         `
 /* eslint-disable-next-line */
 export interface AnotherCmpProps {
@@ -406,12 +479,12 @@ export function AnotherCmp(props: AnotherCmpProps) {
       );
       await componentTestGenerator(tree, {
         project: 'some-lib',
-        componentPath: 'libs/some-lib/src/lib/some-lib.tsx',
+        componentPath: 'some-lib/src/lib/some-lib.tsx',
       });
 
-      expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+      expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
       expect(
-        tree.read('libs/some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
+        tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8')
       ).toMatchSnapshot();
     });
   });

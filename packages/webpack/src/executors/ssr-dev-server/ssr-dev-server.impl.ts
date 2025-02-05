@@ -3,9 +3,9 @@ import {
   parseTargetString,
   readTargetOptions,
   runExecutor,
-} from '@nrwl/devkit';
-import * as chalk from 'chalk';
-import { combineAsyncIterableIterators } from '@nrwl/devkit/src/utils/async-iterable';
+} from '@nx/devkit';
+import * as pc from 'picocolors';
+import { combineAsyncIterables } from '@nx/devkit/src/utils/async-iterable';
 
 import { WebpackExecutorOptions } from '../webpack/schema';
 import { TargetOptions, WebSsrDevServerOptions } from './schema';
@@ -15,8 +15,11 @@ export async function* ssrDevServerExecutor(
   options: WebSsrDevServerOptions,
   context: ExecutorContext
 ) {
-  const browserTarget = parseTargetString(options.browserTarget);
-  const serverTarget = parseTargetString(options.serverTarget);
+  const browserTarget = parseTargetString(
+    options.browserTarget,
+    context.projectGraph
+  );
+  const serverTarget = parseTargetString(options.serverTarget, context);
   const browserOptions = readTargetOptions<WebpackExecutorOptions>(
     browserTarget,
     context
@@ -46,13 +49,11 @@ export async function* ssrDevServerExecutor(
   );
   let browserBuilt = false;
   let nodeStarted = false;
-  const combined = combineAsyncIterableIterators(runBrowser, runServer);
-
-  process.env['port'] = `${options.port}`;
+  const combined = combineAsyncIterables(runBrowser, runServer);
 
   for await (const output of combined) {
     if (!output.success) throw new Error('Could not build application');
-    if (output.options.target === 'node') {
+    if (output.options?.target === 'node') {
       nodeStarted = true;
     } else if (output.options?.target === 'web') {
       browserBuilt = true;
@@ -61,7 +62,7 @@ export async function* ssrDevServerExecutor(
     if (nodeStarted && browserBuilt) {
       await waitUntilServerIsListening(options.port);
       console.log(
-        `[ ${chalk.green('ready')} ] on http://localhost:${options.port}`
+        `[ ${pc.green('ready')} ] on http://localhost:${options.port}`
       );
       yield {
         ...output,

@@ -1,9 +1,9 @@
 import { parse, join } from 'path';
 import { writeFileSync } from 'fs';
-import { LifeCycle } from '../../tasks-runner/life-cycle';
+import { LifeCycle, TaskResult } from '../../tasks-runner/life-cycle';
 import { Task } from '../../config/task-graph';
 import { TaskStatus } from '../../tasks-runner/tasks-runner';
-import { projectGraphCacheDirectory } from '../../utils/cache-directory';
+import { cacheDir } from '../../utils/cache-directory';
 
 export class StoreRunInformationLifeCycle implements LifeCycle {
   private startTime: string;
@@ -36,11 +36,18 @@ export class StoreRunInformationLifeCycle implements LifeCycle {
     }
   }
 
-  endTasks(
-    taskResults: Array<{ task: Task; status: TaskStatus; code: number }>
-  ): void {
+  endTasks(taskResults: TaskResult[]): void {
     for (let tr of taskResults) {
-      this.timings[tr.task.id].end = this.now();
+      if (tr.task.startTime) {
+        this.timings[tr.task.id].start = new Date(
+          tr.task.startTime
+        ).toISOString();
+      }
+      if (tr.task.endTime) {
+        this.timings[tr.task.id].end = new Date(tr.task.endTime).toISOString();
+      } else {
+        this.timings[tr.task.id].end = this.now();
+      }
     }
     this.taskResults.push(...taskResults);
   }
@@ -97,7 +104,7 @@ function parseCommand() {
 
 function storeFileFunction(runDetails: any) {
   writeFileSync(
-    join(projectGraphCacheDirectory, 'run.json'),
+    join(cacheDir, 'run.json'),
     JSON.stringify(runDetails, null, 2)
   );
 }

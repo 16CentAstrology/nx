@@ -1,7 +1,7 @@
-
 name: 🐞 Bug Report
 description: This form is to report unexpected behavior in Nx.
 labels: ["type: bug"]
+type: Bug
 body:
   - type: markdown
     attributes:
@@ -26,7 +26,7 @@ body:
   - type: input
     id: repo
     attributes:
-      label: Github Repo
+      label: GitHub Repo
       description: |
         This is extremely important! If this issue is reproduce-able on https://github.com/nrwl/nx-examples, you may use that as the repo.
         If not, please do take a few minutes of your time to create a repo to help us reproduce the issue.
@@ -54,6 +54,23 @@ body:
       label: Failure Logs
       description: Please include any relevant log snippets or files here. This will be automatically formatted into code, so no need for backticks.
       render: shell
+  - type: input
+    id: pm
+    attributes:
+      label: Package Manager Version
+      description: |
+        If `nx report` doesn't work, please provide the name and the version of your package manager.
+        You can get version information by running `yarn --version`, `pnpm --version` or `npm --version`, depending on the package manager used.
+  - type: checkboxes
+    id: os
+    attributes:
+      label: Operating System
+      description: What Operating System are you using?
+      options:
+        - label: macOS
+        - label: Linux
+        - label: Windows
+        - label: Other (Please specify)
   - type: textarea
     id: additional
     attributes:

@@ -1,65 +1,85 @@
 import {
-  extractLayoutDirectory,
-  getImportPath,
   getProjects,
-  getWorkspaceLayout,
   joinPathFragments,
-  names,
+  logger,
   normalizePath,
+  readNxJson,
   Tree,
-} from '@nrwl/devkit';
+} from '@nx/devkit';
+import {
+  determineProjectNameAndRootOptions,
+  ensureProjectName,
+} from '@nx/devkit/src/generators/project-name-and-root-utils';
 import { assertValidStyle } from '../../../utils/assertion';
 import { NormalizedSchema, Schema } from '../schema';
+import { isUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
 
-export function normalizeOptions(
+export async function normalizeOptions(
   host: Tree,
   options: Schema
-): NormalizedSchema {
-  const name = names(options.name).fileName;
-  const { projectDirectory, layoutDirectory } = extractLayoutDirectory(
-    options.directory
-  );
-  const fullProjectDirectory = projectDirectory
-    ? `${names(projectDirectory).fileName}/${name}`
-    : name;
+): Promise<NormalizedSchema> {
+  const isUsingTsSolutionConfig = isUsingTsSolutionSetup(host);
 
-  const projectName = fullProjectDirectory.replace(new RegExp('/', 'g'), '-');
-  const fileName = projectName;
-  const { libsDir: defaultLibsDir, npmScope } = getWorkspaceLayout(host);
-  const libsDir = layoutDirectory ?? defaultLibsDir;
-  const projectRoot = joinPathFragments(libsDir, fullProjectDirectory);
+  await ensureProjectName(host, options, 'library');
+  const {
+    projectName,
+    names: projectNames,
+    projectRoot,
+    importPath,
+  } = await determineProjectNameAndRootOptions(host, {
+    name: options.name,
+    projectType: 'library',
+    directory: options.directory,
+    importPath: options.importPath,
+  });
+  const nxJson = readNxJson(host);
+  const addPlugin =
+    process.env.NX_ADD_PLUGINS !== 'false' &&
+    nxJson.useInferencePlugins !== false;
+
+  options.addPlugin ??= addPlugin;
+
+  const fileName = options.simpleName
+    ? projectNames.projectSimpleName
+    : projectNames.projectFileName;
 
   const parsedTags = options.tags
     ? options.tags.split(',').map((s) => s.trim())
     : [];
 
-  const importPath =
-    options.importPath || getImportPath(npmScope, fullProjectDirectory);
+  let bundler = options.bundler ?? 'none';
+
+  if (bundler === 'none') {
+    if (options.publishable) {
+      logger.warn(
+        `Publishable libraries cannot be used with bundler: 'none'. Defaulting to 'rollup'.`
+      );
+      bundler = 'rollup';
+    }
+    if (options.buildable) {
+      logger.warn(
+        `Buildable libraries cannot be used with bundler: 'none'. Defaulting to 'rollup'.`
+      );
+      bundler = 'rollup';
+    }
+  }
 
   const normalized = {
     ...options,
     compiler: options.compiler ?? 'babel',
-    bundler:
-      options.bundler ??
-      (options.buildable || options.publishable ? 'rollup' : 'none'),
+    bundler,
     fileName,
-    routePath: `/${name}`,
-    name: projectName,
+    routePath: `/${projectNames.projectSimpleName}`,
+    name: isUsingTsSolutionConfig ? importPath : projectName,
     projectRoot,
-    projectDirectory: fullProjectDirectory,
     parsedTags,
     importPath,
-    libsDir,
   } as NormalizedSchema;
 
   // Libraries with a bundler or is publishable must also be buildable.
   normalized.buildable = Boolean(
     normalized.bundler !== 'none' || options.buildable || options.publishable
   );
-
-  normalized.unitTestRunner =
-    normalized.unitTestRunner ??
-    (normalized.bundler === 'vite' ? 'vitest' : 'jest');
 
   normalized.inSourceTests === normalized.minimal || normalized.inSourceTests;
 
@@ -72,10 +92,13 @@ export function normalizeOptions(
       );
     }
 
-    try {
-      normalized.appMain = appProjectConfig.targets.build.options.main;
-      normalized.appSourceRoot = normalizePath(appProjectConfig.sourceRoot);
-    } catch (e) {
+    normalized.appMain =
+      appProjectConfig.targets.build?.options?.main ??
+      findMainEntry(host, appProjectConfig.root);
+    normalized.appSourceRoot = normalizePath(appProjectConfig.sourceRoot);
+
+    // TODO(jack): We should use appEntryFile instead of appProject so users can directly set it rather than us inferring it.
+    if (!normalized.appMain) {
       throw new Error(
         `Could not locate project main for ${options.appProject}`
       );
@@ -84,5 +107,34 @@ export function normalizeOptions(
 
   assertValidStyle(normalized.style);
 
+  normalized.isUsingTsSolutionConfig = isUsingTsSolutionConfig;
+
   return normalized;
+}
+
+function findMainEntry(tree: Tree, projectRoot: string): string | undefined {
+  const mainFiles = [
+    // These are the main files we generate with.
+    'src/main.ts',
+    'src/main.tsx',
+    'src/main.js',
+    'src/main.jsx',
+    // Other options just in case
+    'src/index.ts',
+    'src/index.tsx',
+    'src/index.js',
+    'src/index.jsx',
+    'main.ts',
+    'main.tsx',
+    'main.js',
+    'main.jsx',
+    'index.ts',
+    'index.tsx',
+    'index.js',
+    'index.jsx',
+  ];
+  const mainEntry = mainFiles.find((file) =>
+    tree.exists(joinPathFragments(projectRoot, file))
+  );
+  return mainEntry ? joinPathFragments(projectRoot, mainEntry) : undefined;
 }
